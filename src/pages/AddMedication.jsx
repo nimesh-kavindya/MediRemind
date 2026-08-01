@@ -52,10 +52,94 @@ export default function AddMedication() {
     lowSupplyThreshold: 5
   });
 
+  const dedupMedicationsList = (medsList) => {
+    if (!Array.isArray(medsList)) return { merged: [], modified: false };
+    const merged = [];
+    const nameMap = {};
+    let modified = false;
+
+    for (const med of medsList) {
+      if (!med || !med.name) continue;
+      const nameKey = med.name.trim().toLowerCase();
+      const existingIndex = nameMap[nameKey];
+
+      if (existingIndex !== undefined) {
+        const existing = merged[existingIndex];
+        
+        // Merge scheduled times
+        const times1 = Array.isArray(existing.reminderTime) ? existing.reminderTime : [existing.reminderTime].filter(Boolean);
+        const times2 = Array.isArray(med.reminderTime) ? med.reminderTime : [med.reminderTime].filter(Boolean);
+        const combinedTimes = Array.from(new Set([...times1, ...times2])).sort();
+        const newReminderTime = combinedTimes.length > 1 ? combinedTimes : (combinedTimes[0] || '');
+
+        if (JSON.stringify(existing.reminderTime) !== JSON.stringify(newReminderTime)) {
+          existing.reminderTime = newReminderTime;
+          modified = true;
+        }
+
+        const getSupply = (m) => {
+          if (m.remainingSupply !== undefined) return parseInt(m.remainingSupply, 10);
+          if (m.dosesLeft !== undefined) return parseInt(m.dosesLeft, 10);
+          if (m.remainingDoses !== undefined) return parseInt(m.remainingDoses, 10);
+          return parseInt(m.totalSupply, 10) || 30;
+        };
+
+        const existingRemaining = getSupply(existing);
+        const medRemaining = getSupply(med);
+
+        // If existing is out of stock (<= 0) but the duplicate has stock, we can restore it.
+        if (existingRemaining <= 0 && medRemaining > 0) {
+          existing.totalSupply = parseInt(med.totalSupply, 10) || 30;
+          existing.remainingSupply = medRemaining;
+          existing.dosesLeft = medRemaining;
+          existing.remainingDoses = medRemaining;
+          modified = true;
+        } else {
+          // Keep current pill count as-is, but synchronize properties
+          existing.dosesLeft = existingRemaining;
+          existing.remainingSupply = existingRemaining;
+          existing.remainingDoses = existingRemaining;
+        }
+        
+        modified = true;
+      } else {
+        const copy = { ...med };
+        const getSupply = (m) => {
+          if (m.remainingSupply !== undefined) return parseInt(m.remainingSupply, 10);
+          if (m.dosesLeft !== undefined) return parseInt(m.dosesLeft, 10);
+          if (m.remainingDoses !== undefined) return parseInt(m.remainingDoses, 10);
+          return parseInt(m.totalSupply, 10) || 30;
+        };
+        const supply = getSupply(copy);
+        copy.remainingSupply = supply;
+        copy.dosesLeft = supply;
+        copy.remainingDoses = supply;
+
+        merged.push(copy);
+        nameMap[nameKey] = merged.length - 1;
+      }
+    }
+
+    return { merged, modified };
+  };
+
   const loadMedications = () => {
-    const activeUid = user?.uid || 'demo_user';
-    const saved = JSON.parse(localStorage.getItem(`meds_${activeUid}`) || '[]');
-    setMedications(saved);
+    try {
+      const activeUid = user?.uid || 'demo_user';
+      const saved = JSON.parse(localStorage.getItem(`meds_${activeUid}`) || '[]');
+      const { merged, modified } = dedupMedicationsList(saved);
+      if (modified) {
+        try {
+          localStorage.setItem(`meds_${activeUid}`, JSON.stringify(merged));
+        } catch (err) {
+          console.warn('Failed to write meds to localStorage in loadMedications:', err);
+        }
+        window.dispatchEvent(new Event('local_meds_updated'));
+      }
+      setMedications(merged);
+    } catch (err) {
+      console.error('Failed to load medications inside AddMedication:', err);
+    }
   };
 
   useEffect(() => {
@@ -80,15 +164,69 @@ export default function AddMedication() {
     try {
       const supplyVal = parseInt(data.totalSupply, 10) || 30;
       const thresholdVal = parseInt(data.lowSupplyThreshold, 10) || 5;
+      const nameKey = data.name.trim().toLowerCase();
 
-      await addMedication(user?.uid, {
-        ...data,
-        totalSupply: supplyVal,
-        remainingSupply: supplyVal,
-        lowSupplyThreshold: thresholdVal,
-        taken: false
-      });
-      toast.success(`Added ${data.name} with ${supplyVal} doses total supply!`);
+      // Find if duplicate medication with the same name exists (case-insensitive)
+      const existing = medications.find(m => m.name && m.name.trim().toLowerCase() === nameKey);
+
+      if (existing) {
+        const getSupply = (m) => {
+          if (m.remainingSupply !== undefined) return parseInt(m.remainingSupply, 10);
+          if (m.dosesLeft !== undefined) return parseInt(m.dosesLeft, 10);
+          if (m.remainingDoses !== undefined) return parseInt(m.remainingDoses, 10);
+          return parseInt(m.totalSupply, 10) || 30;
+        };
+
+        const currentTotal = parseInt(existing.totalSupply, 10) || 30;
+        const currentRemaining = getSupply(existing);
+
+        let newTotal = currentTotal;
+        let newRemaining = currentRemaining;
+        let isRefill = false;
+
+        // Auto refill only when out of stock (0 pills)
+        if (currentRemaining <= 0) {
+          newTotal = supplyVal;
+          newRemaining = supplyVal;
+          isRefill = true;
+        }
+
+        // Merge scheduled times
+        const times1 = Array.isArray(existing.reminderTime) ? existing.reminderTime : [existing.reminderTime].filter(Boolean);
+        const times2 = [data.reminderTime].filter(Boolean);
+        const combinedTimes = Array.from(new Set([...times1, ...times2])).sort();
+        const newReminderTime = combinedTimes.length > 1 ? combinedTimes : (combinedTimes[0] || '08:00');
+
+        const updatedPayload = {
+          ...existing,
+          reminderTime: newReminderTime,
+          totalSupply: newTotal,
+          remainingSupply: newRemaining,
+          dosesLeft: newRemaining,
+          remainingDoses: newRemaining,
+          lowSupplyThreshold: Math.max(parseInt(existing.lowSupplyThreshold, 10) || 5, thresholdVal)
+        };
+
+        await updateMedication(user?.uid, existing.id, updatedPayload);
+        
+        if (isRefill) {
+          toast.success(`Refilled ${existing.name}! Stock reset to ${supplyVal} doses.`, { icon: '📦' });
+        } else {
+          toast.success(`Added scheduled time ${data.reminderTime} for ${existing.name}. Pill stock kept as-is.`, { icon: '📅' });
+        }
+      } else {
+        await addMedication(user?.uid, {
+          ...data,
+          totalSupply: supplyVal,
+          remainingSupply: supplyVal,
+          dosesLeft: supplyVal,
+          remainingDoses: supplyVal,
+          lowSupplyThreshold: thresholdVal,
+          taken: false
+        });
+        toast.success(`Added ${data.name} with ${supplyVal} doses total supply!`);
+      }
+
       reset({
         type: 'pill',
         category: 'Daily',
@@ -99,14 +237,18 @@ export default function AddMedication() {
       });
       loadMedications();
     } catch (error) {
-      console.error('Error adding medication:', error);
-      toast.error('Failed to add medication');
+      console.error('Error adding/updating medication:', error);
+      toast.error('Failed to save medication');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleQuickRefill = async (med) => {
+  const handleQuickRefill = async (e, med) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const total = parseInt(med.totalSupply, 10) || 30;
     try {
       await updateMedication(user?.uid, med.id, {
@@ -119,7 +261,11 @@ export default function AddMedication() {
     }
   };
 
-  const handleDelete = async (medId, medName) => {
+  const handleDelete = async (e, medId, medName) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (window.confirm(`Are you sure you want to delete ${medName}? This will update your Dashboard and Dose History.`)) {
       try {
         await deleteMedication(user?.uid, medId);
@@ -131,7 +277,11 @@ export default function AddMedication() {
     }
   };
 
-  const handleStartEdit = (med) => {
+  const handleStartEdit = (e, med) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setEditingMed(med);
     const total = parseInt(med.totalSupply, 10) || 30;
     const remaining = med.remainingSupply !== undefined ? parseInt(med.remainingSupply, 10) : total;
@@ -144,7 +294,7 @@ export default function AddMedication() {
       category: med.category || 'Daily',
       frequency: med.frequency || 'Daily',
       mealTiming: med.mealTiming || 'after_meal',
-      reminderTime: med.reminderTime || '08:00',
+      reminderTime: Array.isArray(med.reminderTime) ? med.reminderTime[0] || '08:00' : (med.reminderTime || '08:00'),
       startDate: med.startDate || '',
       endDate: med.endDate || '',
       notes: med.notes || '',
@@ -155,7 +305,10 @@ export default function AddMedication() {
   };
 
   const handleUpdateSubmit = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!editForm.name.trim()) {
       toast.error('Medication name is required');
       return;
@@ -171,6 +324,8 @@ export default function AddMedication() {
         ...editForm,
         totalSupply: totalNum,
         remainingSupply: remNum,
+        dosesLeft: remNum,
+        remainingDoses: remNum,
         lowSupplyThreshold: threshNum
       };
 
@@ -395,7 +550,7 @@ export default function AddMedication() {
             <Search className="mx-auto mb-2 text-slate-400" size={32} />
             <p className="font-semibold text-sm">No medications found matching "{searchQuery}"</p>
             <button 
-              onClick={() => setSearchQuery('')}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setSearchQuery(''); }}
               className="mt-2 text-xs font-bold text-teal-600 dark:text-teal-400 hover:underline"
             >
               Clear search filter
@@ -404,7 +559,7 @@ export default function AddMedication() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <AnimatePresence mode="popLayout">
-              {filteredMedications.map((med) => (
+              {(Array.isArray(filteredMedications) ? filteredMedications : []).map((med) => (
                 <motion.div
                   key={med.id}
                   layout
@@ -433,14 +588,14 @@ export default function AddMedication() {
 
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => handleStartEdit(med)}
+                            onClick={(e) => handleStartEdit(e, med)}
                             className="p-2 rounded-xl text-slate-500 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                             title="Edit Medication"
                           >
                             <Edit2 size={16} />
                           </button>
                           <button
-                            onClick={() => handleDelete(med.id, med.name)}
+                            onClick={(e) => handleDelete(e, med.id, med.name)}
                             className="p-2 rounded-xl text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
                             title="Delete Medication"
                           >
@@ -452,7 +607,7 @@ export default function AddMedication() {
                       <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-300 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex-wrap">
                         {med.reminderTime && (
                           <span className="flex items-center gap-1 text-teal-600 dark:text-teal-400 font-medium">
-                            <Clock size={13} /> Time: {med.reminderTime}
+                            <Clock size={13} /> Time: {Array.isArray(med.reminderTime) ? med.reminderTime.join(', ') : med.reminderTime}
                           </span>
                         )}
                         {med.startDate && (
@@ -484,7 +639,7 @@ export default function AddMedication() {
                             </div>
 
                             <button
-                              onClick={() => handleQuickRefill(med)}
+                              onClick={(e) => handleQuickRefill(e, med)}
                               className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-400 text-white dark:text-slate-950 font-bold text-[11px] flex items-center gap-1 shrink-0 transition-all active:scale-95 shadow-sm"
                               title={`Reset remaining doses to ${total}`}
                             >
@@ -523,7 +678,7 @@ export default function AddMedication() {
                   <Edit2 size={18} className="text-teal-500" /> Edit Medication
                 </h3>
                 <button 
-                  onClick={() => setEditingMed(null)}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditingMed(null); }}
                   className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-bold"
                 >
                   ✕
@@ -705,7 +860,7 @@ export default function AddMedication() {
                 </div>
 
                 <div className="pt-2 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
-                  <Button type="button" variant="outline" onClick={() => setEditingMed(null)}>
+                  <Button type="button" variant="outline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditingMed(null); }}>
                     Cancel
                   </Button>
                   <Button type="submit" isLoading={isUpdating} className="bg-teal-600 text-white font-bold">

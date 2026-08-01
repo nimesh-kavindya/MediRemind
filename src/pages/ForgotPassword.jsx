@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft, CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 import Logo from '../components/Logo';
 import Card from '../components/Card';
 import Input from '../components/Input';
@@ -16,11 +17,17 @@ export default function ForgotPassword() {
 
   const onSubmit = async (data) => {
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // Clean and fast simulated API resolution under 300ms
+      await new Promise((resolve) => setTimeout(resolve, 250));
       setIsSuccess(true);
-    }, 1000);
+      toast.success('Password reset email sent! Check your inbox. 📧');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to send reset link');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

@@ -12,26 +12,41 @@ import {
 import { db } from '../utils/firebase';
 
 const getLocalStorageLogs = (userId) => {
-  const activeUser = userId || 'demo_user';
-  const saved = localStorage.getItem(`dose_logs_${activeUser}`);
-  return saved ? JSON.parse(saved) : null;
+  try {
+    const activeUser = userId || 'demo_user';
+    const saved = localStorage.getItem(`dose_logs_${activeUser}`);
+    return saved ? JSON.parse(saved) : null;
+  } catch (err) {
+    console.warn('Failed to read dose logs from localStorage:', err);
+    return null;
+  }
 };
 
 const saveLocalStorageLogs = (userId, logs) => {
-  const activeUser = userId || 'demo_user';
-  localStorage.setItem(`dose_logs_${activeUser}`, JSON.stringify(logs));
-  window.dispatchEvent(new Event('dose_logs_updated'));
+  try {
+    const activeUser = userId || 'demo_user';
+    localStorage.setItem(`dose_logs_${activeUser}`, JSON.stringify(logs));
+    window.dispatchEvent(new Event('dose_logs_updated'));
+  } catch (err) {
+    console.warn('Failed to write dose logs to localStorage:', err);
+  }
 };
 
 // Generate realistic mock 30-day dose history if user has no history yet
 export const generateDefault30DayHistory = (userId) => {
-  const activeUser = userId || 'demo_user';
-  const localMeds = JSON.parse(localStorage.getItem(`meds_${activeUser}`) || '[]');
-  const medList = localMeds.length > 0 ? localMeds : [
-    { name: 'Amoxicillin', dosage: '500mg', type: 'capsule', scheduledTime: '08:00' },
-    { name: 'Vitamin D3', dosage: '1000 IU', type: 'pill', scheduledTime: '13:00' },
-    { name: 'Omeprazole', dosage: '20mg', type: 'pill', scheduledTime: '20:00' }
-  ];
+  try {
+    const activeUser = userId || 'demo_user';
+    let localMeds = [];
+    try {
+      localMeds = JSON.parse(localStorage.getItem(`meds_${activeUser}`) || '[]');
+    } catch (err) {
+      console.warn('Failed to parse meds in generateDefault30DayHistory:', err);
+    }
+    const medList = localMeds.length > 0 ? localMeds : [
+      { name: 'Amoxicillin', dosage: '500mg', type: 'capsule', scheduledTime: '08:00' },
+      { name: 'Vitamin D3', dosage: '1000 IU', type: 'pill', scheduledTime: '13:00' },
+      { name: 'Omeprazole', dosage: '20mg', type: 'pill', scheduledTime: '20:00' }
+    ];
 
   const mockLogs = [];
   const now = new Date();
@@ -71,6 +86,10 @@ export const generateDefault30DayHistory = (userId) => {
 
   saveLocalStorageLogs(activeUser, mockLogs);
   return mockLogs;
+  } catch (err) {
+    console.error('generateDefault30DayHistory failed:', err);
+    return [];
+  }
 };
 
 // Log a single dose event
@@ -113,6 +132,64 @@ export const logDoseEvent = async (userId, doseData) => {
   return newLog;
 };
 
+// Log a batch of dose events sequentially
+export const logBatchDoseEvents = async (userId, doseData, count = 1) => {
+  const activeUser = userId || 'demo_user';
+  const newLogs = [];
+
+  const baseTimeStr = doseData.scheduledTime || '08:00';
+  const baseDateStr = doseData.dateStr || new Date().toISOString().split('T')[0];
+
+  for (let i = 0; i < count; i++) {
+    const baseDateTime = new Date(`${baseDateStr}T${baseTimeStr}:00`);
+    // Sequential offset (add i hours to make them sequential and ordered)
+    const offsetMs = i * 60 * 60 * 1000;
+    const d = new Date(baseDateTime.getTime() + offsetMs);
+    const dateStr = d.toISOString().split('T')[0];
+    const scheduledTime = d.toTimeString().substring(0, 5);
+
+    const notesStr = count > 1 
+      ? `${doseData.notes || 'Logged manually'} (Batch ${i + 1}/${count})` 
+      : (doseData.notes || '');
+
+    const newLog = {
+      id: `log_${Date.now()}_${i}_${Math.random().toString(36).substring(7)}`,
+      medId: doseData.medId || 'custom',
+      medName: doseData.medName || 'Medication',
+      dosage: doseData.dosage || '1 dose',
+      type: doseData.type || 'pill',
+      category: doseData.category || 'Daily',
+      scheduledTime: scheduledTime,
+      timestamp: d.toISOString(),
+      dateStr: dateStr,
+      status: doseData.status || 'taken',
+      notes: notesStr,
+      createdAt: d.toISOString()
+    };
+    newLogs.push(newLog);
+  }
+
+  // 1. Update LocalStorage immediately
+  const existing = getLocalStorageLogs(activeUser) || [];
+  const updated = [...newLogs, ...existing];
+  saveLocalStorageLogs(activeUser, updated);
+
+  // 2. Try Firestore background sync for each doc
+  try {
+    const logsRef = collection(db, `users/${activeUser}/dose_logs`);
+    for (const log of newLogs) {
+      await addDoc(logsRef, {
+        ...log,
+        createdAt: serverTimestamp()
+      });
+    }
+  } catch (err) {
+    console.warn('Firestore dose_logs batch sync skipped, saved locally:', err);
+  }
+
+  return newLogs;
+};
+
 // Get all logs for a user
 export const getDoseLogs = async (userId) => {
   const activeUser = userId || 'demo_user';
@@ -127,9 +204,31 @@ export const getDoseLogs = async (userId) => {
     );
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
-      const firestoreLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      saveLocalStorageLogs(activeUser, firestoreLogs);
-      return firestoreLogs;
+      const firestoreLogs = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          id: data.id || doc.id
+        };
+      });
+
+      // Intelligently merge local logs to avoid wiping out recently added ones that are still syncing
+      const firestoreIds = new Set(firestoreLogs.map(l => l.id));
+      const firestoreKeys = new Set(firestoreLogs.map(l => `${l.medName}_${l.timestamp}`));
+
+      const mergedLogs = [...firestoreLogs];
+      for (const localLog of localLogs) {
+        const key = `${localLog.medName}_${localLog.timestamp}`;
+        if (!firestoreIds.has(localLog.id) && !firestoreKeys.has(key)) {
+          mergedLogs.push(localLog);
+        }
+      }
+
+      // Sort merged logs by timestamp descending
+      mergedLogs.sort((a, b) => new Date(b.timestamp || b.createdAt || 0) - new Date(a.timestamp || a.createdAt || 0));
+
+      saveLocalStorageLogs(activeUser, mergedLogs);
+      return mergedLogs;
     }
   } catch (err) {
     console.warn('Firestore dose_logs fetch fallback to local logs:', err);

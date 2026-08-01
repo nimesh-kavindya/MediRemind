@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Calendar, Activity, Pill, AlertCircle, CheckCircle2, Circle, 
@@ -33,8 +33,18 @@ export default function Dashboard() {
   const [medications, setMedications] = useState([]);
   const [doseLogs, setDoseLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(() => {
+    return searchParams.get('search') || '';
+  });
   const [filterType, setFilterType] = useState('all');
+
+  useEffect(() => {
+    const q = searchParams.get('search');
+    if (q !== null) {
+      setSearchTerm(q);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -44,9 +54,14 @@ export default function Dashboard() {
     const loadLocalMeds = () => {
       const savedRaw = safeGetItem(`meds_${user.uid}`, null);
       if (savedRaw === null) {
-        // First initialization for new user - Empty state
-        safeSetItem(`meds_${user.uid}`, JSON.stringify([]));
-        setMedications([]);
+        // First initialization for new user
+        const sampleMeds = [
+          { id: 'm1', name: 'Amoxicillin', dosage: '500mg', type: 'capsule', frequency: 'Daily', mealTiming: 'after_meal', reminderTime: '08:00', taken: false, totalSupply: 30, remainingSupply: 4, dosesLeft: 4, remainingDoses: 4, lowSupplyThreshold: 5, createdAt: new Date().toISOString() },
+          { id: 'm2', name: 'Vitamin D3', dosage: '1000 IU', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '13:00', taken: true, totalSupply: 60, remainingSupply: 42, dosesLeft: 42, remainingDoses: 42, lowSupplyThreshold: 10, createdAt: new Date().toISOString() },
+          { id: 'm3', name: 'Omeprazole', dosage: '20mg', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '20:00', taken: false, totalSupply: 30, remainingSupply: 18, dosesLeft: 18, remainingDoses: 18, lowSupplyThreshold: 5, createdAt: new Date().toISOString() }
+        ];
+        safeSetItem(`meds_${user.uid}`, JSON.stringify(sampleMeds));
+        setMedications(sampleMeds);
       } else {
         try {
           const saved = JSON.parse(savedRaw || '[]');
@@ -112,22 +127,51 @@ export default function Dashboard() {
     };
   }, [user]);
 
-  const handleRefill = async (med) => {
+  const handleRefill = async (e, med) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const total = parseInt(med.totalSupply, 10) || 30;
-    try {
-      const medRef = doc(db, `users/${user?.uid}`, 'medications', med.id);
-      await updateDoc(medRef, { remainingSupply: total });
-      toast.success(`Refilled ${med.name}! Supply reset to ${total} doses.`, { icon: '📦' });
-    } catch (error) {
-      const updatedMeds = medications.map(m => m.id === med.id ? { ...m, remainingSupply: total } : m);
-      setMedications(updatedMeds);
-      safeSetItem(`meds_${user?.uid}`, JSON.stringify(updatedMeds));
-      window.dispatchEvent(new Event('local_meds_updated'));
-      toast.success(`Refilled ${med.name}! Supply reset to ${total} doses.`, { icon: '📦' });
+    
+    // Exact, synchronous update of state and localStorage first (optimistic)
+    const updatedMeds = medications.map(m => {
+      if (m.id === med.id) {
+        return {
+          ...m,
+          remainingSupply: total,
+          dosesLeft: total,
+          remainingDoses: total
+        };
+      }
+      return m;
+    });
+
+    setMedications(updatedMeds);
+    const activeUid = user?.uid || 'demo_user';
+    safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
+    window.dispatchEvent(new Event('local_meds_updated'));
+    toast.success(`Refilled ${med.name}! Supply reset to ${total} doses.`, { icon: '📦' });
+
+    if (user?.uid) {
+      try {
+        const medRef = doc(db, `users/${user.uid}/medications`, med.id);
+        await updateDoc(medRef, { 
+          remainingSupply: total,
+          dosesLeft: total,
+          remainingDoses: total
+        });
+      } catch (error) {
+        console.warn('Firestore refill background failed:', error);
+      }
     }
   };
 
-  const toggleTakenStatus = async (med) => {
+  const toggleTakenStatus = async (e, med) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const updatedTaken = !med.taken;
     const total = parseInt(med.totalSupply, 10) || 30;
     const currentSupply = med.remainingSupply !== undefined ? parseInt(med.remainingSupply, 10) : total;
@@ -140,20 +184,40 @@ export default function Dashboard() {
       newSupply = currentSupply + 1;
     }
 
-    try {
-      const medRef = doc(db, `users/${user.uid}/medications`, med.id);
-      await updateDoc(medRef, { 
-        taken: updatedTaken,
-        remainingSupply: newSupply
-      });
-      toast.success(`Marked as ${updatedTaken ? 'taken' : 'pending'}`);
-    } catch (error) {
-      // Fallback update in local state and localStorage
-      const updatedMeds = medications.map(m => m.id === med.id ? { ...m, taken: updatedTaken, remainingSupply: newSupply } : m);
-      setMedications(updatedMeds);
-      safeSetItem(`meds_${user?.uid}`, JSON.stringify(updatedMeds));
-      window.dispatchEvent(new Event('local_meds_updated'));
-      toast.success(`Marked as ${updatedTaken ? 'taken' : 'pending'}`);
+    // Exact, synchronous update of state and localStorage first (optimistic)
+    const updatedMeds = medications.map(m => {
+      if (m.id === med.id) {
+        return {
+          ...m,
+          taken: updatedTaken,
+          remainingSupply: newSupply,
+          dosesLeft: newSupply,
+          remainingDoses: newSupply
+        };
+      }
+      return m;
+    });
+
+    setMedications(updatedMeds);
+    const activeUid = user?.uid || 'demo_user';
+    safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
+    window.dispatchEvent(new Event('local_meds_updated'));
+
+    toast.success(`Marked as ${updatedTaken ? 'taken' : 'pending'}`);
+
+    // Update in Firestore in background
+    if (user?.uid) {
+      try {
+        const medRef = doc(db, `users/${user.uid}/medications`, med.id);
+        await updateDoc(medRef, { 
+          taken: updatedTaken,
+          remainingSupply: newSupply,
+          dosesLeft: newSupply,
+          remainingDoses: newSupply
+        });
+      } catch (error) {
+        console.warn('Firestore update background failed:', error);
+      }
     }
 
     // Check low supply threshold alert when taking a dose
@@ -173,7 +237,7 @@ export default function Dashboard() {
         dosage: med.dosage,
         type: med.type,
         category: med.category || 'Daily',
-        scheduledTime: med.reminderTime || 'Now',
+        scheduledTime: Array.isArray(med.reminderTime) ? med.reminderTime.join(', ') : (med.reminderTime || 'Now'),
         status: 'taken',
         notes: 'Logged via Dashboard'
       });
@@ -239,7 +303,7 @@ export default function Dashboard() {
               {(Array.isArray(lowSupplyMeds) ? lowSupplyMeds : []).map(m => (
                 <Button
                   key={m.id}
-                  onClick={() => handleRefill(m)}
+                  onClick={(e) => handleRefill(e, m)}
                   size="sm"
                   className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm flex items-center gap-1"
                 >
@@ -271,7 +335,7 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <Button onClick={() => toggleTakenStatus(nextReminder.medication)} className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold border-none shadow-md">
+            <Button onClick={(e) => toggleTakenStatus(e, nextReminder.medication)} className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold border-none shadow-md">
               Mark as Taken
             </Button>
           </div>
@@ -376,7 +440,7 @@ export default function Dashboard() {
                   className="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800/80 transition-colors shadow-xs"
                 >
                   <div className="flex items-center gap-3 sm:gap-4">
-                    <button onClick={() => toggleTakenStatus(med)} className="shrink-0 transition-transform active:scale-90">
+                    <button onClick={(e) => toggleTakenStatus(e, med)} className="shrink-0 transition-transform active:scale-90">
                       {med.taken ? <CheckCircle2 size={26} className="text-emerald-500 fill-emerald-500/20" /> : <Circle size={26} className="text-slate-400 hover:text-teal-500" />}
                     </button>
                     <div className="min-w-0 flex-1">
@@ -390,43 +454,11 @@ export default function Dashboard() {
                       <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         <span className="flex items-center gap-1">
                           <Calendar size={12} className="shrink-0" />
-                          <span>{med.reminderTime || 'Anytime'}</span>
+                          <span>{Array.isArray(med.reminderTime) ? med.reminderTime.join(', ') : (med.reminderTime || 'Anytime')}</span>
                           {med.mealTiming && med.mealTiming !== 'none' && (
                             <span>• {med.mealTiming.replace('_', ' ')}</span>
                           )}
                         </span>
-
-                        {/* Supply Counter */}
-                        {(() => {
-                          const total = parseInt(med.totalSupply, 10) || 30;
-                          const remaining = med.remainingSupply !== undefined ? parseInt(med.remainingSupply, 10) : total;
-                          const threshold = parseInt(med.lowSupplyThreshold, 10) || 5;
-                          const isLow = remaining <= threshold;
-
-                          return (
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-md flex items-center gap-1 border ${
-                                isLow 
-                                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30' 
-                                  : 'bg-slate-200/60 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 border-slate-300/50 dark:border-slate-600/50'
-                              }`}>
-                                <Package size={11} className={isLow ? 'text-amber-500 animate-pulse' : 'text-teal-500'} />
-                                <span>{remaining}/{total} doses left</span>
-                                {isLow && <span className="font-extrabold text-[9px] uppercase tracking-wider text-amber-600 dark:text-amber-400 ml-1">• LOW</span>}
-                              </span>
-
-                              {isLow && (
-                                <button
-                                  onClick={() => handleRefill(med)}
-                                  className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 border border-teal-500/20 flex items-center gap-1 transition-colors"
-                                  title="Refill supply"
-                                >
-                                  <RefreshCw size={10} /> Refill
-                                </button>
-                              )}
-                            </div>
-                          );
-                        })()}
                       </div>
                     </div>
                   </div>

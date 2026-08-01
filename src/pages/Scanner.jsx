@@ -153,6 +153,7 @@ export default function Scanner() {
       navigate('/dashboard');
     } catch (error) {
       toast.error('Failed to import medications');
+    } finally {
       setIsImporting(false);
     }
   };

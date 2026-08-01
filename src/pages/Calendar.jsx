@@ -55,7 +55,7 @@ export default function Calendar() {
 
   // Dummy filter logic: In a real app, you'd check history subcollections per medication.
   // Here we just display them.
-  const medsForSelectedDate = medications; 
+  const medsForSelectedDate = Array.isArray(medications) ? medications : []; 
 
   if (loading) return <div className="p-12 flex justify-center"><Loader size="lg" /></div>;
 
@@ -65,7 +65,7 @@ export default function Calendar() {
 
       <Card className="overflow-x-auto">
         <div className="flex gap-2 min-w-max pb-4">
-          {days.map(day => (
+          {(Array.isArray(days) ? days : []).map(day => (
             <button
               key={day.toISOString()}
               onClick={() => setSelectedDate(day)}
@@ -108,7 +108,7 @@ export default function Calendar() {
                 <div>
                   <h4 className="font-bold text-gray-900 dark:text-white">{med.name} - {med.dosage}</h4>
                   <p className="text-sm text-gray-500">
-                    <span className="font-medium">{med.reminderTime || 'Anytime'}</span> • {med.mealTiming}
+                    <span className="font-medium">{Array.isArray(med.reminderTime) ? med.reminderTime.join(', ') : (med.reminderTime || 'Anytime')}</span> • {med.mealTiming}
                   </p>
                 </div>
               </Card>

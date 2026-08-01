@@ -22,6 +22,7 @@ import Loader from '../components/Loader';
 import { 
   getDoseLogs, 
   logDoseEvent, 
+  logBatchDoseEvents,
   deleteDoseLog, 
   calculate30DayAdherence,
   clearAllDoseLogs
@@ -37,6 +38,7 @@ export default function MedicationHistory() {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [showLogModal, setShowLogModal] = useState(false);
+  const [isLogging, setIsLogging] = useState(false);
 
   // Manual Log Form State
   const [manualForm, setManualForm] = useState({
@@ -46,7 +48,8 @@ export default function MedicationHistory() {
     scheduledTime: '08:00',
     status: 'taken',
     dateStr: new Date().toISOString().split('T')[0],
-    notes: 'Logged manually'
+    notes: 'Logged manually',
+    totalDosesCount: 1
   });
 
   const loadLogs = async () => {
@@ -76,13 +79,15 @@ export default function MedicationHistory() {
 
   // Unique list of medications for filter dropdown
   const medicationOptions = useMemo(() => {
-    const names = new Set(logs.map(l => l.medName).filter(Boolean));
+    const safeLogs = Array.isArray(logs) ? logs : [];
+    const names = new Set(safeLogs.map(l => l && l.medName).filter(Boolean));
     return Array.from(names);
   }, [logs]);
 
   // Unique list of categories for filter dropdown
   const categoryOptions = useMemo(() => {
-    const categories = new Set(logs.map(l => l.category || 'Daily').filter(Boolean));
+    const safeLogs = Array.isArray(logs) ? logs : [];
+    const categories = new Set(safeLogs.map(l => l && (l.category || 'Daily')).filter(Boolean));
     return Array.from(categories);
   }, [logs]);
 
@@ -108,7 +113,11 @@ export default function MedicationHistory() {
     });
   }, [logs, searchTerm, selectedMed, selectedCategory, selectedStatus]);
 
-  const handleDeleteLog = async (logId) => {
+  const handleDeleteLog = async (e, logId) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!window.confirm('Are you sure you want to delete this dose record?')) return;
     try {
       await deleteDoseLog(user?.uid, logId);
@@ -120,24 +129,37 @@ export default function MedicationHistory() {
   };
 
   const handleManualSubmit = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!manualForm.medName.trim()) {
       toast.error('Please enter a medication name');
       return;
     }
 
+    const count = parseInt(manualForm.totalDosesCount, 10);
+    if (isNaN(count) || count < 1) {
+      toast.error('Please enter a valid count of at least 1');
+      return;
+    }
+
+    setIsLogging(true);
     try {
-      await logDoseEvent(user?.uid, {
+      const createdLogs = await logBatchDoseEvents(user?.uid, {
         medName: manualForm.medName,
         dosage: manualForm.dosage || '1 dose',
         category: manualForm.category || 'Daily',
         scheduledTime: manualForm.scheduledTime,
         status: manualForm.status,
         dateStr: manualForm.dateStr,
-        timestamp: new Date(`${manualForm.dateStr}T${manualForm.scheduledTime}:00`).toISOString(),
         notes: manualForm.notes
-      });
-      toast.success('Dose logged successfully! 🎉');
+      }, count);
+
+      // Append all generated log items to state instantly
+      setLogs(prev => [...createdLogs, ...prev]);
+
+      toast.success(count > 1 ? `${count} doses logged successfully! 🎉` : 'Dose logged successfully! 🎉');
       setShowLogModal(false);
       setManualForm({
         medName: '',
@@ -146,15 +168,23 @@ export default function MedicationHistory() {
         scheduledTime: '08:00',
         status: 'taken',
         dateStr: new Date().toISOString().split('T')[0],
-        notes: 'Logged manually'
+        notes: 'Logged manually',
+        totalDosesCount: 1
       });
       loadLogs();
     } catch (err) {
+      console.error('Error logging dose batch:', err);
       toast.error('Error logging dose');
+    } finally {
+      setIsLogging(false);
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (logs.length === 0) {
       toast.error('No logs available to export');
       return;
@@ -217,14 +247,14 @@ export default function MedicationHistory() {
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
           <button
-            onClick={() => setShowLogModal(true)}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowLogModal(true); }}
             className="px-3.5 py-2 rounded-xl bg-teal-600 dark:bg-teal-500 hover:bg-teal-700 dark:hover:bg-teal-400 text-white dark:text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-500/20 active:scale-95 transition-all"
           >
             <Plus size={16} /> Log Manual Dose
           </button>
 
           <button
-            onClick={handleExportCSV}
+            onClick={(e) => handleExportCSV(e)}
             className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
             title="Export CSV Report"
           >
@@ -403,7 +433,7 @@ export default function MedicationHistory() {
       </Card>
 
       {/* Medication Compliance Breakdown */}
-      {analytics.medicationCompliance.length > 0 && (
+      {analytics && Array.isArray(analytics.medicationCompliance) && analytics.medicationCompliance.length > 0 && (
         <Card>
           <h3 className="text-base font-bold mb-3 text-slate-900 dark:text-white flex items-center gap-2">
             <Pill size={18} className="text-emerald-500" /> Compliance By Medication
@@ -476,8 +506,8 @@ export default function MedicationHistory() {
               onChange={(e) => setSelectedMed(e.target.value)}
               className="w-full rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
             >
-              <option value="all">All Medications ({medicationOptions.length})</option>
-              {medicationOptions.map(name => (
+              <option value="all">All Medications ({(Array.isArray(medicationOptions) ? medicationOptions : []).length})</option>
+              {(Array.isArray(medicationOptions) ? medicationOptions : []).map(name => (
                 <option key={name} value={name}>{name}</option>
               ))}
             </select>
@@ -490,8 +520,8 @@ export default function MedicationHistory() {
               onChange={(e) => setSelectedCategory(e.target.value)}
               className="w-full rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
             >
-              <option value="all">All Categories ({categoryOptions.length})</option>
-              {categoryOptions.map(cat => (
+              <option value="all">All Categories ({(Array.isArray(categoryOptions) ? categoryOptions : []).length})</option>
+              {(Array.isArray(categoryOptions) ? categoryOptions : []).map(cat => (
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
@@ -524,7 +554,7 @@ export default function MedicationHistory() {
           />
         ) : (
           <div className="space-y-2.5">
-            {filteredLogs.slice(0, 50).map((log) => {
+            {(Array.isArray(filteredLogs) ? filteredLogs : []).slice(0, 50).map((log) => {
               const isTaken = log.status === 'taken';
               const isMissed = log.status === 'missed';
               const isSkipped = log.status === 'skipped';
@@ -587,7 +617,7 @@ export default function MedicationHistory() {
                   </div>
 
                   <button
-                    onClick={() => handleDeleteLog(log.id)}
+                    onClick={(e) => handleDeleteLog(e, log.id)}
                     className="text-slate-400 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 self-end sm:self-center"
                     title="Delete entry"
                   >
@@ -615,7 +645,7 @@ export default function MedicationHistory() {
                   <Plus size={20} className="text-teal-500" /> Log Dose Record
                 </h3>
                 <button 
-                  onClick={() => setShowLogModal(false)}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowLogModal(false); }}
                   className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-bold"
                 >
                   ✕
@@ -714,6 +744,20 @@ export default function MedicationHistory() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Total Doses / Logs Count *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={manualForm.totalDosesCount === undefined ? '' : manualForm.totalDosesCount}
+                    onChange={(e) => setManualForm(prev => ({ ...prev, totalDosesCount: e.target.value }))}
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Notes / Comments
                   </label>
                   <input
@@ -726,10 +770,10 @@ export default function MedicationHistory() {
                 </div>
 
                 <div className="pt-2 flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => setShowLogModal(false)}>
+                  <Button type="button" variant="outline" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowLogModal(false); }}>
                     Cancel
                   </Button>
-                  <Button type="submit" className="bg-teal-500 text-slate-950 font-bold">
+                  <Button type="submit" isLoading={isLogging} className="bg-teal-500 text-slate-950 font-bold">
                     Save Record
                   </Button>
                 </div>

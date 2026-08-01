@@ -20,16 +20,35 @@ export default function Profile() {
 
   // Medical & Emergency Info state
   const [medicalInfo, setMedicalInfo] = useState(() => {
-    const saved = localStorage.getItem(`med_profile_${user?.uid || 'demo'}`);
-    return saved ? JSON.parse(saved) : {
+    try {
+      const saved = localStorage.getItem(`med_profile_${user?.uid || 'demo'}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            bloodType: parsed.bloodType || 'O+',
+            allergies: parsed.allergies || '',
+            chronicConditions: parsed.chronicConditions || '',
+            emergencyName: parsed.emergencyName || '',
+            emergencyPhone: parsed.emergencyPhone || '',
+            doctorName: parsed.doctorName || '',
+            doctorPhone: parsed.doctorPhone || '',
+            pharmacy: parsed.pharmacy || ''
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse saved medical profile:', e);
+    }
+    return {
       bloodType: 'O+',
-      allergies: 'Penicillin, Dust',
-      chronicConditions: 'Mild Hypertension',
-      emergencyName: 'Jane Doe (Spouse)',
-      emergencyPhone: '+1 (555) 019-2834',
-      doctorName: 'Dr. Sarah Jenkins',
-      doctorPhone: '+1 (555) 890-1234',
-      pharmacy: 'MediCare Pharmacy Center'
+      allergies: '',
+      chronicConditions: '',
+      emergencyName: '',
+      emergencyPhone: '',
+      doctorName: '',
+      doctorPhone: '',
+      pharmacy: ''
     };
   });
 
@@ -41,6 +60,39 @@ export default function Profile() {
       setPhotoURL(user.photoURL || '');
       const meds = JSON.parse(localStorage.getItem(`meds_${user.uid}`) || '[]');
       setMedCount(meds.length);
+
+      // Dynamically load user's actual medical profile once user is resolved
+      try {
+        const saved = localStorage.getItem(`med_profile_${user.uid}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') {
+            setMedicalInfo({
+              bloodType: parsed.bloodType || 'O+',
+              allergies: parsed.allergies || '',
+              chronicConditions: parsed.chronicConditions || '',
+              emergencyName: parsed.emergencyName || '',
+              emergencyPhone: parsed.emergencyPhone || '',
+              doctorName: parsed.doctorName || '',
+              doctorPhone: parsed.doctorPhone || '',
+              pharmacy: parsed.pharmacy || ''
+            });
+          }
+        } else {
+          setMedicalInfo({
+            bloodType: 'O+',
+            allergies: '',
+            chronicConditions: '',
+            emergencyName: '',
+            emergencyPhone: '',
+            doctorName: '',
+            doctorPhone: '',
+            pharmacy: ''
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to parse user medical profile dynamically:', e);
+      }
     }
   }, [user]);
 
@@ -82,11 +134,18 @@ export default function Profile() {
   };
 
   const handleUpdate = async (e) => {
-    e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setLoading(true);
     try {
       await updateUserProfile({ displayName, photoURL });
-      localStorage.setItem(`med_profile_${user?.uid || 'demo'}`, JSON.stringify(medicalInfo));
+      try {
+        localStorage.setItem(`med_profile_${user?.uid || 'demo'}`, JSON.stringify(medicalInfo));
+      } catch (storeErr) {
+        console.warn('Failed to write profile to localStorage:', storeErr);
+      }
       toast.success('Profile and Medical Record updated successfully! 🎉');
     } catch (error) {
       console.error(error);
@@ -239,124 +298,126 @@ export default function Profile() {
       </div>
 
       {/* Emergency & Medical Record Card */}
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-white">
-            <AlertTriangle size={20} className="text-amber-500" /> Emergency & Medical Record
+      <form onSubmit={handleUpdate} className="space-y-6">
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-white">
+              <AlertTriangle size={20} className="text-amber-500" /> Emergency & Medical Record
+            </h3>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Visible on emergency summary
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Blood Type
+              </label>
+              <select
+                value={medicalInfo.bloodType}
+                onChange={(e) => handleMedicalChange('bloodType', e.target.value)}
+                className="w-full h-11 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all leading-normal"
+              >
+                {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Emergency Contact Person
+              </label>
+              <Input
+                icon={PhoneCall}
+                value={medicalInfo.emergencyName}
+                onChange={(e) => handleMedicalChange('emergencyName', e.target.value)}
+                placeholder="Full name & relation"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Emergency Contact Phone
+              </label>
+              <Input
+                icon={PhoneCall}
+                value={medicalInfo.emergencyPhone}
+                onChange={(e) => handleMedicalChange('emergencyPhone', e.target.value)}
+                placeholder="+1 (555) 000-0000"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Known Allergies
+              </label>
+              <Input
+                icon={Activity}
+                value={medicalInfo.allergies}
+                onChange={(e) => handleMedicalChange('allergies', e.target.value)}
+                placeholder="e.g. Penicillin, Peanuts"
+              />
+            </div>
+          </div>
+        </Card>
+
+        {/* Healthcare Provider & Doctor Details Card */}
+        <Card>
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-900 dark:text-white">
+            <Stethoscope size={20} className="text-teal-600 dark:text-teal-400" /> Primary Healthcare Provider
           </h3>
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-            Visible on emergency summary
-          </span>
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Blood Type
-            </label>
-            <select
-              value={medicalInfo.bloodType}
-              onChange={(e) => handleMedicalChange('bloodType', e.target.value)}
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all"
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Prescribing Physician
+              </label>
+              <Input
+                icon={Stethoscope}
+                value={medicalInfo.doctorName}
+                onChange={(e) => handleMedicalChange('doctorName', e.target.value)}
+                placeholder="Dr. Name"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Clinic / Doctor Contact
+              </label>
+              <Input
+                icon={PhoneCall}
+                value={medicalInfo.doctorPhone}
+                onChange={(e) => handleMedicalChange('doctorPhone', e.target.value)}
+                placeholder="Phone number"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Preferred Pharmacy
+              </label>
+              <Input
+                icon={Pill}
+                value={medicalInfo.pharmacy}
+                onChange={(e) => handleMedicalChange('pharmacy', e.target.value)}
+                placeholder="Pharmacy name"
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+            <Button 
+              type="submit" 
+              isLoading={loading}
+              className="bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-950 font-bold px-6 py-2.5 shadow-md shadow-teal-500/20"
             >
-              {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((type) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
+              <Save size={16} className="mr-2" /> Save All Profile Info
+            </Button>
           </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Emergency Contact Person
-            </label>
-            <Input
-              icon={PhoneCall}
-              value={medicalInfo.emergencyName}
-              onChange={(e) => handleMedicalChange('emergencyName', e.target.value)}
-              placeholder="Full name & relation"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Emergency Contact Phone
-            </label>
-            <Input
-              icon={PhoneCall}
-              value={medicalInfo.emergencyPhone}
-              onChange={(e) => handleMedicalChange('emergencyPhone', e.target.value)}
-              placeholder="+1 (555) 000-0000"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Known Allergies
-            </label>
-            <Input
-              icon={Activity}
-              value={medicalInfo.allergies}
-              onChange={(e) => handleMedicalChange('allergies', e.target.value)}
-              placeholder="e.g. Penicillin, Peanuts"
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* Healthcare Provider & Doctor Details Card */}
-      <Card>
-        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-900 dark:text-white">
-          <Stethoscope size={20} className="text-teal-600 dark:text-teal-400" /> Primary Healthcare Provider
-        </h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Prescribing Physician
-            </label>
-            <Input
-              icon={Stethoscope}
-              value={medicalInfo.doctorName}
-              onChange={(e) => handleMedicalChange('doctorName', e.target.value)}
-              placeholder="Dr. Name"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Clinic / Doctor Contact
-            </label>
-            <Input
-              icon={PhoneCall}
-              value={medicalInfo.doctorPhone}
-              onChange={(e) => handleMedicalChange('doctorPhone', e.target.value)}
-              placeholder="Phone number"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Preferred Pharmacy
-            </label>
-            <Input
-              icon={Pill}
-              value={medicalInfo.pharmacy}
-              onChange={(e) => handleMedicalChange('pharmacy', e.target.value)}
-              placeholder="Pharmacy name"
-            />
-          </div>
-        </div>
-
-        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
-          <Button 
-            onClick={handleUpdate} 
-            isLoading={loading}
-            className="bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-950 font-bold px-6 py-2.5 shadow-md shadow-teal-500/20"
-          >
-            <Save size={16} className="mr-2" /> Save All Profile Info
-          </Button>
-        </div>
-      </Card>
+        </Card>
+      </form>
     </div>
   );
 }
