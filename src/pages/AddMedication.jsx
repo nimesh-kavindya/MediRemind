@@ -165,9 +165,14 @@ export default function AddMedication() {
       const supplyVal = parseInt(data.totalSupply, 10) || 30;
       const thresholdVal = parseInt(data.lowSupplyThreshold, 10) || 5;
       const nameKey = data.name.trim().toLowerCase();
+      const activeUid = user?.uid || 'demo_user';
 
-      // Find if duplicate medication with the same name exists (case-insensitive)
-      const existing = medications.find(m => m.name && m.name.trim().toLowerCase() === nameKey);
+      const existingIndex = medications.findIndex(m => m.name && m.name.trim().toLowerCase() === nameKey);
+      const existing = existingIndex >= 0 ? medications[existingIndex] : null;
+
+      let newMedData = null;
+      let isRefill = false;
+      const updatedMeds = [...medications];
 
       if (existing) {
         const getSupply = (m) => {
@@ -182,22 +187,19 @@ export default function AddMedication() {
 
         let newTotal = currentTotal;
         let newRemaining = currentRemaining;
-        let isRefill = false;
 
-        // Auto refill only when out of stock (0 pills)
         if (currentRemaining <= 0) {
           newTotal = supplyVal;
           newRemaining = supplyVal;
           isRefill = true;
         }
 
-        // Merge scheduled times
         const times1 = Array.isArray(existing.reminderTime) ? existing.reminderTime : [existing.reminderTime].filter(Boolean);
         const times2 = [data.reminderTime].filter(Boolean);
         const combinedTimes = Array.from(new Set([...times1, ...times2])).sort();
         const newReminderTime = combinedTimes.length > 1 ? combinedTimes : (combinedTimes[0] || '08:00');
 
-        const updatedPayload = {
+        newMedData = {
           ...existing,
           reminderTime: newReminderTime,
           totalSupply: newTotal,
@@ -206,26 +208,32 @@ export default function AddMedication() {
           remainingDoses: newRemaining,
           lowSupplyThreshold: Math.max(parseInt(existing.lowSupplyThreshold, 10) || 5, thresholdVal)
         };
-
-        await updateMedication(user?.uid, existing.id, updatedPayload);
         
+        updatedMeds[existingIndex] = newMedData;
         if (isRefill) {
           toast.success(`Refilled ${existing.name}! Stock reset to ${supplyVal} doses.`, { icon: '📦' });
         } else {
-          toast.success(`Added scheduled time ${data.reminderTime} for ${existing.name}. Pill stock kept as-is.`, { icon: '📅' });
+          toast.success(`Added scheduled time ${data.reminderTime} for ${existing.name}.`, { icon: '📅' });
         }
       } else {
-        await addMedication(user?.uid, {
+        newMedData = {
+          id: `local_${Date.now()}`,
           ...data,
           totalSupply: supplyVal,
           remainingSupply: supplyVal,
           dosesLeft: supplyVal,
           remainingDoses: supplyVal,
           lowSupplyThreshold: thresholdVal,
-          taken: false
-        });
+          taken: false,
+          createdAt: new Date().toISOString()
+        };
+        updatedMeds.push(newMedData);
         toast.success(`Added ${data.name} with ${supplyVal} doses total supply!`);
       }
+
+      setMedications(updatedMeds);
+      localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
+      window.dispatchEvent(new Event('local_meds_updated'));
 
       reset({
         type: 'pill',
@@ -235,9 +243,16 @@ export default function AddMedication() {
         totalSupply: 30,
         lowSupplyThreshold: 5
       });
-      loadMedications();
+
+      if (user?.uid) {
+        if (existing) {
+          updateMedication(user.uid, existing.id, newMedData).catch(e => console.warn('Background sync failed', e));
+        } else {
+          addMedication(user.uid, newMedData).catch(e => console.warn('Background sync failed', e));
+        }
+      }
     } catch (error) {
-      console.error('Error adding/updating medication:', error);
+      console.error('Error adding/updating medication locally:', error);
       toast.error('Failed to save medication');
     } finally {
       setIsLoading(false);
@@ -268,11 +283,18 @@ export default function AddMedication() {
     }
     if (window.confirm(`Are you sure you want to delete ${medName}? This will update your Dashboard and Dose History.`)) {
       try {
-        await deleteMedication(user?.uid, medId);
+        const activeUid = user?.uid || 'demo_user';
+        const updatedMeds = medications.filter(m => m.id !== medId);
+        setMedications(updatedMeds);
+        localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
+        window.dispatchEvent(new Event('local_meds_updated'));
         toast.success(`Deleted ${medName}`);
-        loadMedications();
+
+        if (user?.uid) {
+          deleteMedication(user.uid, medId).catch(err => console.warn('Background delete failed', err));
+        }
       } catch (err) {
-        toast.error('Failed to delete medication');
+        toast.error('Failed to delete medication locally');
       }
     }
   };
@@ -316,6 +338,7 @@ export default function AddMedication() {
 
     setIsUpdating(true);
     try {
+      const activeUid = user?.uid || 'demo_user';
       const totalNum = parseInt(editForm.totalSupply, 10) || 30;
       const remNum = parseInt(editForm.remainingSupply, 10) ?? totalNum;
       const threshNum = parseInt(editForm.lowSupplyThreshold, 10) || 5;
@@ -329,13 +352,20 @@ export default function AddMedication() {
         lowSupplyThreshold: threshNum
       };
 
-      await updateMedication(user?.uid, editingMed.id, updatedPayload);
+      const updatedMeds = medications.map(m => m.id === editingMed.id ? { ...m, ...updatedPayload } : m);
+      setMedications(updatedMeds);
+      localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
+      window.dispatchEvent(new Event('local_meds_updated'));
+
       toast.success(`Updated ${editForm.name} successfully!`);
       setEditingMed(null);
-      loadMedications();
+
+      if (user?.uid) {
+        updateMedication(user.uid, editingMed.id, updatedPayload).catch(err => console.warn('Background sync failed', err));
+      }
     } catch (err) {
-      console.error('Error updating medication:', err);
-      toast.error('Failed to update medication');
+      console.error('Error updating medication locally:', err);
+      toast.error('Failed to update medication locally');
     } finally {
       setIsUpdating(false);
     }

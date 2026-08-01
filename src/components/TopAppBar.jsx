@@ -195,7 +195,7 @@ export default function TopAppBar() {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
                 transition={{ duration: 0.15 }}
-                className="absolute right-0 mt-2.5 w-80 sm:w-96 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-slate-950/50 overflow-hidden z-50 text-slate-800 dark:text-slate-100"
+                className="fixed inset-x-3 top-14 sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2.5 sm:w-96 max-h-[85vh] sm:max-h-none flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50 text-slate-800 dark:text-slate-100 origin-top"
               >
                 {/* Dropdown Header */}
                 <div className="p-4 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
@@ -226,7 +226,7 @@ export default function TopAppBar() {
                 </div>
 
                 {/* Dropdown Scrollable Body */}
-                <div className="max-h-[360px] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/80">
+                <div className="flex-1 overflow-y-auto max-h-[65vh] sm:max-h-[360px] divide-y divide-slate-100 dark:divide-slate-800/80">
                   
                   {/* Category: Overdue / Missed Doses */}
                   {overdueMeds.length > 0 && (
