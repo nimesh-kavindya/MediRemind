@@ -92,16 +92,7 @@ export default function AiMedicationChat() {
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
       console.error('Gemini Chat Service Error:', error);
-      toast.error('Unable to send message to AI assistant right now.');
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `err_${Date.now()}`,
-          role: 'assistant',
-          content: `⚠️ **Network Notice:** Could not complete request to MediRemind AI.\n\nRegarding **"${queryText}"**:\n- Please verify your internet connection.\n- Consult your doctor or pharmacist for emergency medical advice.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        }
-      ]);
+      toast.error(error.message || 'Unable to communicate with MediRemind AI.');
     } finally {
       setIsLoading(false);
     }
