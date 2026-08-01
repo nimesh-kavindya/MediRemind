@@ -14,7 +14,9 @@ import { db } from '../utils/firebase';
 const getLocalStorageLogs = (userId) => {
   try {
     const activeUser = userId || 'demo_user';
+    const hasCleared = localStorage.getItem(`has_cleared_logs_${activeUser}`);
     const saved = localStorage.getItem(`dose_logs_${activeUser}`);
+    if (hasCleared === 'true' && !saved) return [];
     return saved ? JSON.parse(saved) : null;
   } catch (err) {
     console.warn('Failed to read dose logs from localStorage:', err);
@@ -234,12 +236,25 @@ export const getDoseLogs = async (userId) => {
     console.warn('Firestore dose_logs fetch fallback to local logs:', err);
   }
 
+  // If no logs from Firestore and no local logs, but user explicitly cleared history, don't generate defaults
+  const hasCleared = localStorage.getItem(`has_cleared_logs_${activeUser}`);
+  if (!localLogs || localLogs.length === 0) {
+    if (hasCleared === 'true') {
+      return [];
+    }
+  }
+
   return localLogs;
 };
 
 // Clear all logs for a user
 export const clearAllDoseLogs = async (userId) => {
   const activeUser = userId || 'demo_user';
+  try {
+    localStorage.setItem(`has_cleared_logs_${activeUser}`, 'true');
+  } catch (e) {
+    console.warn('Failed to set has_cleared_logs flag:', e);
+  }
   saveLocalStorageLogs(activeUser, []);
 };
 

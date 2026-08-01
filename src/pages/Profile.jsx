@@ -121,12 +121,20 @@ export default function Profile() {
     reader.readAsDataURL(file);
   };
 
-  const handleRemovePhoto = () => {
+  const handleRemovePhoto = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setPhotoURL('');
     toast.success('Photo removed');
   };
 
-  const handleLinkGooglePhoto = () => {
+  const handleLinkGooglePhoto = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const name = displayName || user?.name || 'User';
     const googleAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0d9488&color=fff&size=256&bold=true`;
     setPhotoURL(googleAvatar);

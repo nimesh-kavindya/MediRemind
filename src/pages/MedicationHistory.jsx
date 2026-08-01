@@ -124,6 +124,7 @@ export default function MedicationHistory() {
       setLogs(prev => prev.filter(l => l.id !== logId));
       toast.success('Dose record removed');
     } catch (err) {
+      console.error(err);
       toast.error('Failed to delete log');
     }
   };
@@ -202,20 +203,34 @@ export default function MedicationHistory() {
       ].join(','))
     ];
 
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `MediRemind_Adherence_History_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    toast.success('Exported Medication History as CSV!');
+    try {
+      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `MediRemind_Adherence_History_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      toast.success('Exported Medication History as CSV!');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to export CSV');
+    }
   };
 
-  const handleClearHistory = async () => {
+  const handleClearHistory = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (window.confirm('Are you sure you want to clear all dose history logs? This action cannot be undone.')) {
-      await clearAllDoseLogs(user?.uid);
-      setLogs([]);
-      toast.success('Dose history cleared successfully');
+      try {
+        await clearAllDoseLogs(user?.uid);
+        setLogs([]);
+        toast.success('Dose history cleared successfully');
+      } catch (err) {
+        console.error(err);
+        toast.error('Failed to clear dose history');
+      }
     }
   };
 

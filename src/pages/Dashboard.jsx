@@ -198,12 +198,15 @@ export default function Dashboard() {
       return m;
     });
 
-    setMedications(updatedMeds);
-    const activeUid = user?.uid || 'demo_user';
-    safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
-    window.dispatchEvent(new Event('local_meds_updated'));
-
-    toast.success(`Marked as ${updatedTaken ? 'taken' : 'pending'}`);
+    try {
+      setMedications(updatedMeds);
+      const activeUid = user?.uid || 'demo_user';
+      safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
+      window.dispatchEvent(new Event('local_meds_updated'));
+      toast.success(`Marked as ${updatedTaken ? 'taken' : 'pending'}`);
+    } catch (err) {
+      console.warn('Local state update failed:', err);
+    }
 
     // Update in Firestore in background
     if (user?.uid) {

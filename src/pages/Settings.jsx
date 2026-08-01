@@ -40,7 +40,11 @@ export default function Settings() {
     return JSON.parse(localStorage.getItem(`meds_${user.uid}`) || '[]');
   };
 
-  const handleExportPDF = async () => {
+  const handleExportPDF = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     try {
       const data = await fetchUserMedications();
       generateMedicationReportPDF(user, data);
@@ -51,39 +55,57 @@ export default function Settings() {
     }
   };
 
-  const handleExportJSON = async () => {
-    const activeUid = user?.uid || 'demo_user';
-    const meds = await fetchUserMedications();
-    let logs = [];
+  const handleExportJSON = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     try {
-      if (user?.uid) {
-        const logSnap = await getDocs(collection(db, `users/${user.uid}/dose_logs`));
-        logs = logSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const activeUid = user?.uid || 'demo_user';
+      const meds = await fetchUserMedications();
+      let logs = [];
+      try {
+        if (user?.uid) {
+          const logSnap = await getDocs(collection(db, `users/${user.uid}/dose_logs`));
+          logs = logSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        }
+      } catch (e) {
+        logs = JSON.parse(localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
       }
-    } catch (e) {
-      logs = JSON.parse(localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
-    }
-    if (!logs || logs.length === 0) {
-      logs = JSON.parse(localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
-    }
+      if (!logs || logs.length === 0) {
+        logs = JSON.parse(localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
+      }
 
-    const exportPayload = {
-      app: 'MediRemind',
-      exportedAt: new Date().toISOString(),
-      user: user?.email || 'User',
-      medications: meds,
-      doseLogs: logs
-    };
+      const exportPayload = {
+        app: 'MediRemind',
+        exportedAt: new Date().toISOString(),
+        user: user?.email || 'User',
+        medications: meds,
+        doseLogs: logs
+      };
 
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
-    downloadFile(dataStr, `mediremind_backup_${new Date().toISOString().slice(0, 10)}.json`);
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
+      downloadFile(dataStr, `mediremind_backup_${new Date().toISOString().slice(0, 10)}.json`);
+    } catch (err) {
+      console.error('JSON Export failed:', err);
+      toast.error('Failed to export JSON backup');
+    }
   };
 
-  const handleExportCSV = async () => {
-    const data = await fetchUserMedications();
-    const csv = Papa.unparse(data);
-    const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
-    downloadFile(dataStr, "mediremind_export.csv");
+  const handleExportCSV = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    try {
+      const data = await fetchUserMedications();
+      const csv = Papa.unparse(data);
+      const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+      downloadFile(dataStr, "mediremind_export.csv");
+    } catch (err) {
+      console.error('CSV Export failed:', err);
+      toast.error('Failed to export CSV');
+    }
   };
 
   const downloadFile = (dataStr, filename) => {
@@ -176,7 +198,11 @@ export default function Settings() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleConfirmClearAll = async () => {
+  const handleConfirmClearAll = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setIsClearing(true);
     const activeUid = user?.uid || 'demo_user';
 
@@ -214,8 +240,9 @@ export default function Settings() {
       localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify([]));
       localStorage.setItem(`scan_history_${activeUid}`, JSON.stringify([]));
       localStorage.setItem(`scan_logs_${activeUid}`, JSON.stringify([]));
+      localStorage.setItem(`has_cleared_logs_${activeUid}`, 'true');
 
-      // 3. Dispatch global events to notify all pages (Dashboard, Add Medication, Dose History, Scanner, Calendar)
+      // 3. Dispatch global events to notify all pages
       window.dispatchEvent(new Event('local_meds_updated'));
       window.dispatchEvent(new Event('dose_logs_updated'));
       window.dispatchEvent(new Event('scan_logs_updated'));
