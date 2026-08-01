@@ -91,8 +91,17 @@ export default function AiMedicationChat() {
 
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
-      console.error('Gemini Chat Service Error:', error);
-      toast.error(error.message || 'Unable to communicate with MediRemind AI.');
+      console.error('Gemini Chat Service Error (exact):', error);
+      toast.error('Gemini API Key needs to be configured in environment variables (or Vercel).');
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `err_${Date.now()}`,
+          role: 'assistant',
+          content: `⚠️ **API Key Configuration Notice:** Gemini API Key needs to be configured in environment variables (or Vercel). Please set VITE_GEMINI_API_KEY or GEMINI_API_KEY.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
     } finally {
       setIsLoading(false);
     }
