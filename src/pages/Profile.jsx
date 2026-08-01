@@ -7,8 +7,8 @@ import Input from '../components/Input';
 import Button from '../components/Button';
 import { 
   User, Mail, Camera, Upload, Trash2, Link, 
-  HeartPulse, ShieldCheck, PhoneCall, Stethoscope, 
-  AlertTriangle, Save, Activity, Pill, CheckCircle2 
+  HeartPulse, ShieldCheck, 
+  Save, Pill, CheckCircle2 
 } from 'lucide-react';
 
 export default function Profile() {
@@ -18,39 +18,6 @@ export default function Profile() {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Medical & Emergency Info state
-  const [medicalInfo, setMedicalInfo] = useState(() => {
-    try {
-      const saved = localStorage.getItem(`med_profile_${user?.uid || 'demo'}`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === 'object') {
-          return {
-            bloodType: parsed.bloodType || 'O+',
-            allergies: parsed.allergies || '',
-            chronicConditions: parsed.chronicConditions || '',
-            emergencyName: parsed.emergencyName || '',
-            emergencyPhone: parsed.emergencyPhone || '',
-            doctorName: parsed.doctorName || '',
-            doctorPhone: parsed.doctorPhone || '',
-            pharmacy: parsed.pharmacy || ''
-          };
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to parse saved medical profile:', e);
-    }
-    return {
-      bloodType: 'O+',
-      allergies: '',
-      chronicConditions: '',
-      emergencyName: '',
-      emergencyPhone: '',
-      doctorName: '',
-      doctorPhone: '',
-      pharmacy: ''
-    };
-  });
 
   const [medCount, setMedCount] = useState(0);
 
@@ -61,38 +28,6 @@ export default function Profile() {
       const meds = JSON.parse(localStorage.getItem(`meds_${user.uid}`) || '[]');
       setMedCount(meds.length);
 
-      // Dynamically load user's actual medical profile once user is resolved
-      try {
-        const saved = localStorage.getItem(`med_profile_${user.uid}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed && typeof parsed === 'object') {
-            setMedicalInfo({
-              bloodType: parsed.bloodType || 'O+',
-              allergies: parsed.allergies || '',
-              chronicConditions: parsed.chronicConditions || '',
-              emergencyName: parsed.emergencyName || '',
-              emergencyPhone: parsed.emergencyPhone || '',
-              doctorName: parsed.doctorName || '',
-              doctorPhone: parsed.doctorPhone || '',
-              pharmacy: parsed.pharmacy || ''
-            });
-          }
-        } else {
-          setMedicalInfo({
-            bloodType: 'O+',
-            allergies: '',
-            chronicConditions: '',
-            emergencyName: '',
-            emergencyPhone: '',
-            doctorName: '',
-            doctorPhone: '',
-            pharmacy: ''
-          });
-        }
-      } catch (e) {
-        console.warn('Failed to parse user medical profile dynamically:', e);
-      }
     }
   }, [user]);
 
@@ -149,12 +84,7 @@ export default function Profile() {
     setLoading(true);
     try {
       await updateUserProfile({ displayName, photoURL });
-      try {
-        localStorage.setItem(`med_profile_${user?.uid || 'demo'}`, JSON.stringify(medicalInfo));
-      } catch (storeErr) {
-        console.warn('Failed to write profile to localStorage:', storeErr);
-      }
-      toast.success('Profile and Medical Record updated successfully! 🎉');
+      toast.success('Profile updated successfully! 🎉');
     } catch (error) {
       console.error(error);
       toast.error('Failed to update profile');
@@ -163,9 +93,7 @@ export default function Profile() {
     }
   };
 
-  const handleMedicalChange = (field, value) => {
-    setMedicalInfo(prev => ({ ...prev, [field]: value }));
-  };
+
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-8">

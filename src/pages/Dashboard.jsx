@@ -5,7 +5,7 @@ import {
   Calendar, Activity, Pill, AlertCircle, CheckCircle2, Circle, 
   Search, BellRing, Trophy, Flame, Package, AlertTriangle, RefreshCw, Boxes, Bot, Sparkles, ArrowRight, MessageSquare
 } from 'lucide-react';
-import { collection, query, onSnapshot, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { useAuth } from '../context/AuthContext';
 import { safeGetItem, safeSetItem } from '../utils';
