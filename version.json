@@ -1,0 +1,7 @@
+{
+  "version": "1.01",
+  "buildTime": "2026-08-01T03:30:00Z",
+  "apkVersion": "1.01",
+  "apkDownloadUrl": "https://github.com/nimesh-kavindya/mediremind/releases/latest",
+  "changelog": "Initial mobile PWA & APK release with smart health reminder system."
+}
