@@ -217,23 +217,6 @@ export default function MedicationHistory() {
     }
   };
 
-  const handleClearHistory = async (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (window.confirm('Are you sure you want to clear all dose history logs? This action cannot be undone.')) {
-      try {
-        await clearAllDoseLogs(user?.uid);
-        setLogs([]);
-        toast.success('Dose history cleared successfully');
-      } catch (err) {
-        console.error(err);
-        toast.error('Failed to clear dose history');
-      }
-    }
-  };
-
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-12">
       <PageHeader 
@@ -496,10 +479,22 @@ export default function MedicationHistory() {
 
           {logs.length > 0 && (
             <button
-              onClick={handleClearHistory}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.confirm("Are you sure you want to clear all data?")) {
+                  localStorage.clear();
+                  localStorage.removeItem('medications');
+                  localStorage.removeItem('dose_logs');
+                  try { setMedications([]); } catch (e) {}
+                  try { setLogs([]); } catch (e) {}
+                  window.location.reload(); // Hard force refresh to instantly reflect wiped state
+                }
+              }}
               className="text-xs font-semibold text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 flex items-center gap-1 self-end md:self-auto transition-colors"
             >
-              <Trash2 size={13} /> Clear Dose History
+              <Trash2 size={13} /> Clear All Data
             </button>
           )}
         </div>

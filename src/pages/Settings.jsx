@@ -198,68 +198,6 @@ export default function Settings() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleConfirmClearAll = async (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    setIsClearing(true);
-    const activeUid = user?.uid || 'demo_user';
-
-    try {
-      // 1. Delete Firestore user collections
-      if (user?.uid) {
-        try {
-          const medSnap = await getDocs(collection(db, `users/${user.uid}/medications`));
-          if (!medSnap.empty) {
-            const batch1 = writeBatch(db);
-            medSnap.docs.forEach(docSnap => batch1.delete(docSnap.ref));
-            await batch1.commit();
-          }
-
-          const logSnap = await getDocs(collection(db, `users/${user.uid}/dose_logs`));
-          if (!logSnap.empty) {
-            const batch2 = writeBatch(db);
-            logSnap.docs.forEach(docSnap => batch2.delete(docSnap.ref));
-            await batch2.commit();
-          }
-
-          const scanSnap = await getDocs(collection(db, `users/${user.uid}/scan_history`));
-          if (!scanSnap.empty) {
-            const batch3 = writeBatch(db);
-            scanSnap.docs.forEach(docSnap => batch3.delete(docSnap.ref));
-            await batch3.commit();
-          }
-        } catch (fsErr) {
-          console.warn('Firestore clear batch warning:', fsErr);
-        }
-      }
-
-      // 2. Clear Local Storage keys
-      localStorage.setItem(`meds_${activeUid}`, JSON.stringify([]));
-      localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify([]));
-      localStorage.setItem(`scan_history_${activeUid}`, JSON.stringify([]));
-      localStorage.setItem(`scan_logs_${activeUid}`, JSON.stringify([]));
-      localStorage.setItem(`has_cleared_logs_${activeUid}`, 'true');
-
-      // 3. Dispatch global events to notify all pages
-      window.dispatchEvent(new Event('local_meds_updated'));
-      window.dispatchEvent(new Event('dose_logs_updated'));
-      window.dispatchEvent(new Event('scan_logs_updated'));
-      window.dispatchEvent(new Event('calendar_updated'));
-
-      toast.success('All application and medication data cleared successfully! 🗑️');
-      setShowClearModal(false);
-      navigate('/');
-    } catch (err) {
-      console.error('Clear data error:', err);
-      toast.error('An error occurred while clearing data.');
-    } finally {
-      setIsClearing(false);
-    }
-  };
-
-
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <PageHeader title="Settings" />
@@ -403,82 +341,30 @@ export default function Settings() {
           </div>
 
           <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 mt-1">
-            <Button 
-              variant="danger" 
-              className="w-full justify-center bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 py-2.5 font-bold transition-all"
-              onClick={() => setShowClearModal(true)}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.confirm("Are you sure you want to clear all data?")) {
+                  localStorage.clear();
+                  localStorage.removeItem('medications');
+                  localStorage.removeItem('dose_logs');
+                  try { setMedications([]); } catch (e) {}
+                  try { setLogs([]); } catch (e) {}
+                  window.location.reload(); // Hard force refresh to instantly reflect wiped state
+                }
+              }}
+              className="w-full flex items-center justify-center rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 py-2.5 font-bold transition-all"
             >
-              <Trash2 size={16} className="mr-2" /> Clear All Application Data
-            </Button>
+              <Trash2 size={16} className="mr-2" /> Clear All Data
+            </button>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center mt-1.5">
               Permanently removes all added medications, dose logs, and scanner records.
             </p>
           </div>
         </div>
       </Card>
-
-      {/* Confirmation Modal for Clearing Data */}
-      <AnimatePresence>
-        {showClearModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.93, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.93, y: 12 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 relative"
-            >
-              <button 
-                onClick={() => setShowClearModal(false)}
-                className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                disabled={isClearing}
-              >
-                <X size={18} />
-              </button>
-
-              <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mx-auto">
-                <AlertTriangle size={28} />
-              </div>
-
-              <div className="text-center space-y-2">
-                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
-                  Clear All Data?
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Are you sure you want to permanently delete all added medications, dose histories, scan logs, and custom schedules? <strong className="text-rose-500 dark:text-rose-400 font-bold block mt-1">This action cannot be undone.</strong>
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <Button 
-                  variant="secondary" 
-                  className="flex-1 justify-center py-2.5 font-bold" 
-                  onClick={() => setShowClearModal(false)}
-                  disabled={isClearing}
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  variant="danger" 
-                  className="flex-1 justify-center py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shadow-rose-600/20" 
-                  onClick={handleConfirmClearAll}
-                  disabled={isClearing}
-                >
-                  {isClearing ? (
-                    <span className="flex items-center gap-1.5">
-                      <RefreshCw size={15} className="animate-spin" /> Clearing...
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5">
-                      <Trash2 size={16} /> Yes, Clear Data
-                    </span>
-                  )}
-                </Button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* About & Developer Info */}
       <Card>
