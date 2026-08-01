@@ -244,7 +244,7 @@ export default function Dashboard() {
 
       logDoseEvent(activeUid, newLog).catch(() => {});
     }
-
+  };
 
   const { totalMeds, takenMeds, pendingMeds, adherence, typeChartData, weeklyData, currentStreak, longestStreak } = calculateAdherenceStats(medications, doseLogs);
   const nextReminder = calculateNextReminder(medications);
