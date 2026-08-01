@@ -52,19 +52,20 @@ export default function Dashboard() {
     let unsubscribe = () => {};
 
     const loadLocalMeds = () => {
-      const savedRaw = safeGetItem(`meds_${user.uid}`, null);
-      if (savedRaw === null) {
+      const savedRaw = localStorage.getItem('medications') || safeGetItem(`meds_${user.uid}`, null);
+      if (savedRaw === null || savedRaw === '[]') {
         // First initialization for new user
         const sampleMeds = [
           { id: 'm1', name: 'Amoxicillin', dosage: '500mg', type: 'capsule', frequency: 'Daily', mealTiming: 'after_meal', reminderTime: '08:00', taken: false, totalSupply: 30, remainingSupply: 4, dosesLeft: 4, remainingDoses: 4, lowSupplyThreshold: 5, createdAt: new Date().toISOString() },
           { id: 'm2', name: 'Vitamin D3', dosage: '1000 IU', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '13:00', taken: true, totalSupply: 60, remainingSupply: 42, dosesLeft: 42, remainingDoses: 42, lowSupplyThreshold: 10, createdAt: new Date().toISOString() },
           { id: 'm3', name: 'Omeprazole', dosage: '20mg', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '20:00', taken: false, totalSupply: 30, remainingSupply: 18, dosesLeft: 18, remainingDoses: 18, lowSupplyThreshold: 5, createdAt: new Date().toISOString() }
         ];
+        localStorage.setItem('medications', JSON.stringify(sampleMeds));
         safeSetItem(`meds_${user.uid}`, JSON.stringify(sampleMeds));
         setMedications(sampleMeds);
       } else {
         try {
-          const saved = JSON.parse(savedRaw || '[]');
+          const saved = JSON.parse(savedRaw);
           setMedications(Array.isArray(saved) ? saved : []);
         } catch (e) {
           console.error('Failed to parse meds from local storage', e);
@@ -88,30 +89,8 @@ export default function Dashboard() {
 
     fetchDoseLogs();
 
-    try {
-      const q = query(collection(db, `users/${user.uid}/medications`), orderBy('createdAt', 'desc'));
-      
-      unsubscribe = onSnapshot(q, (snapshot) => {
-        const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setMedications(Array.isArray(meds) ? meds : []);
-        setLoading(false);
-        safeSetItem(`meds_${user.uid}`, JSON.stringify(meds));
-        
-        // Schedule notifications for upcoming
-        const nextReminder = calculateNextReminder(meds);
-        if (nextReminder && !nextReminder.isMissed) {
-          scheduleLocalNotification(`Upcoming Dose: ${nextReminder.medication.name}`, {
-            body: `Time to take your ${nextReminder.medication.dosage} at ${nextReminder.time}.`
-          });
-        }
-      }, (error) => {
-        console.warn('Firestore snapshot error, falling back to local storage', error);
-        loadLocalMeds();
-      });
-    } catch (e) {
-      console.warn('Firestore subscription exception:', e);
-      loadLocalMeds();
-    }
+    // Removed onSnapshot to prevent remote data from overwriting local state and causing checkmark reset bug.
+    // Dashboard now strictly reads updated status from localStorage via loadLocalMeds() and local_meds_updated event.
 
     const handleLocalUpdate = () => {
       loadLocalMeds();
@@ -201,6 +180,7 @@ export default function Dashboard() {
     try {
       setMedications(updatedMeds);
       const activeUid = user?.uid || 'demo_user';
+      localStorage.setItem('medications', JSON.stringify(updatedMeds));
       safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
       window.dispatchEvent(new Event('local_meds_updated'));
       toast.success(`Marked as ${updatedTaken ? 'taken' : 'pending'}`);
@@ -232,9 +212,11 @@ export default function Dashboard() {
       toast.error(`⚠️ Low Supply Alert: ${med.name} has only ${newSupply} doses left!`, { duration: 6000 });
     }
 
-    // Automatically log dose history record
+    // Automatically log dose history record and force append to dose_logs
     if (updatedTaken) {
-      logDoseEvent(user?.uid, {
+      const activeUid = user?.uid || 'demo_user';
+      const newLog = {
+        id: `log_${Date.now()}_${med.id}`,
         medId: med.id,
         medName: med.name,
         dosage: med.dosage,
@@ -242,10 +224,26 @@ export default function Dashboard() {
         category: med.category || 'Daily',
         scheduledTime: Array.isArray(med.reminderTime) ? med.reminderTime.join(', ') : (med.reminderTime || 'Now'),
         status: 'taken',
-        notes: 'Logged via Dashboard'
-      });
+        notes: 'Logged via Dashboard',
+        dateStr: new Date().toISOString().split('T')[0],
+        timestamp: new Date().toISOString()
+      };
+      
+      // Append completion timestamp to dose_logs in localStorage so it remains checked
+      try {
+        const existingRaw = localStorage.getItem('dose_logs') || safeGetItem(`dose_logs_${activeUid}`, '[]');
+        const existingLogs = JSON.parse(existingRaw);
+        const updatedLogs = [newLog, ...existingLogs];
+        localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
+        safeSetItem(`dose_logs_${activeUid}`, JSON.stringify(updatedLogs));
+        setDoseLogs(updatedLogs);
+        window.dispatchEvent(new Event('dose_logs_updated'));
+      } catch (e) {
+        console.warn('Failed to append dose_logs to localStorage:', e);
+      }
+
+      logDoseEvent(activeUid, newLog).catch(() => {});
     }
-  };
 
 
   const { totalMeds, takenMeds, pendingMeds, adherence, typeChartData, weeklyData, currentStreak, longestStreak } = calculateAdherenceStats(medications, doseLogs);
