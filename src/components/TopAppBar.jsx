@@ -322,8 +322,12 @@ export default function TopAppBar() {
           </AnimatePresence>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 pl-1.5 sm:pl-3 border-l border-slate-200 dark:border-slate-800">
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-tr from-teal-500 to-cyan-500 p-0.5 flex items-center justify-center overflow-hidden shadow-md shrink-0">
+        <button 
+          onClick={() => navigate('/profile')}
+          className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-3 pr-2 py-1.5 ml-1 border-l border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-xl cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-teal-500/20 text-left"
+          aria-label="View Profile"
+        >
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-tr from-teal-500 to-cyan-500 p-0.5 flex items-center justify-center overflow-hidden shadow-sm shrink-0 hover:shadow-md transition-shadow">
             <div className="w-full h-full rounded-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-teal-700 dark:text-teal-300 font-bold overflow-hidden text-xs sm:text-sm">
               {user?.photoURL ? (
                 <img src={user.photoURL} alt={user.name} className="w-full h-full object-cover" />
@@ -333,14 +337,14 @@ export default function TopAppBar() {
             </div>
           </div>
           <div className="hidden sm:flex flex-col">
-            <span className="text-xs font-semibold text-slate-900 dark:text-white leading-tight">
+            <span className="text-xs font-semibold text-slate-900 dark:text-white leading-tight group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
               {user?.name || 'Patient'}
             </span>
             <span className="text-[10px] font-medium text-teal-700 dark:text-teal-300/80">
               {user?.email || 'Active Session'}
             </span>
           </div>
-        </div>
+        </button>
       </div>
     </header>
   );
