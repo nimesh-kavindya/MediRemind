@@ -4,7 +4,6 @@ MediRemind is a production-ready, AI-powered healthcare application designed to 
 
 ## Features
 
-- **AI Prescription Scanner**: Automatically extracts medication names, dosages, and schedules from images using Google Gemini 1.5 Flash (via secure Firebase Cloud Functions).
 - **Offline Persistence**: Fully functional offline. Medications and syncs are handled seamlessly via Firestore IndexedDB caching.
 - **Progressive Web App (PWA)**: Installable on desktop and mobile with background sync capabilities and custom app icons.
 - **Smart Reminders**: Calculates next doses, missed doses, and provides browser notifications.
@@ -49,12 +48,7 @@ You must create a Firebase project and enable:
 - Cloud Firestore
 - Firebase Storage
 - Firebase Functions (Requires Blaze plan)
-
-#### Set Gemini API Key in Firebase Functions
-
-```bash
-firebase functions:config:set gemini.key="YOUR_GEMINI_API_KEY"
-```
+- 
 
 ### 4. Deployment
 
