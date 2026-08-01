@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, PlusCircle, ScanLine, Settings, LogOut, Calendar as CalendarIcon, User, History, HeartPulse, Bot } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, ScanLine, Settings, LogOut, Calendar as CalendarIcon, User, History, HeartPulse } from 'lucide-react';
 import Logo from './Logo';
 import { clsx } from '../utils';
 import { useAuth } from '../context/AuthContext';
@@ -9,7 +9,6 @@ const NAV_ITEMS = [
   { path: '/add-medication', label: 'Add Medication', icon: PlusCircle },
   { path: '/health-tips', label: 'Health Tips', icon: HeartPulse },
   { path: '/history', label: 'Dose History', icon: History },
-  { path: '/scanner', label: 'AI Help & Scanner', icon: Bot },
   { path: '/calendar', label: 'Calendar', icon: CalendarIcon },
   { path: '/profile', label: 'Profile', icon: User },
   { path: '/settings', label: 'Settings', icon: Settings },

@@ -78,7 +78,14 @@ app.post('/api/analyze-prescription', async (req, res) => {
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ 
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
+      }
+    });
     const contentParts: any[] = [PROMPT];
 
     if (imageBase64) {
@@ -90,26 +97,10 @@ app.post('/api/analyze-prescription', async (req, res) => {
       });
     }
 
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-2.5-flash', 'gemini-2.0-flash-lite'];
-    let response: any = null;
-    let lastErr: any = null;
-
-    for (const m of modelsToTry) {
-      try {
-        response = await ai.models.generateContent({
-          model: m,
-          contents: contentParts,
-        });
-        if (response && response.text) break;
-      } catch (e) {
-        lastErr = e;
-        console.warn(`Model ${m} failed, trying next...`, e?.message || e);
-      }
-    }
-
-    if (!response || !response.text) {
-      throw lastErr || new Error('All scanner models exhausted');
-    }
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents: contentParts,
+    });
 
     const responseText = response.text || '';
     const cleanedJsonStr = responseText.replace(/```json/gi, '').replace(/```/gi, '').trim();
@@ -133,21 +124,11 @@ app.post('/api/analyze-prescription', async (req, res) => {
 
     return res.json(parsedData);
   } catch (error: any) {
-    console.warn('Gemini API scanner fallback info:', error?.message || String(error));
-    // Graceful fallback for API / Auth errors so app never crashes
-    return res.json([
-      {
-        name: "Prescription Item 1",
-        strength: "500mg",
-        dosage: "1 Tablet",
-        type: "pill",
-        frequency: "Twice a Day",
-        mealTiming: "after_meal",
-        duration: "5 days",
-        times: ["08:00", "20:00"],
-        notes: "Scanned prescription item. Verify dosage with doctor."
-      }
-    ]);
+    console.error('Gemini API Error:', error);
+    return res.status(500).json({ 
+      error: 'Failed to analyze prescription using AI.',
+      details: error?.message || String(error)
+    });
   }
 });
 
@@ -159,19 +140,26 @@ app.post('/api/chat-medication', async (req, res) => {
     return res.status(400).json({ error: 'Message is required' });
   }
 
-  const rawKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
-  const apiKey = rawKey.trim();
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
-  if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
-    console.error('[Gemini API Error] GEMINI_API_KEY or VITE_GEMINI_API_KEY is missing or not configured.');
+  if (!apiKey) {
+    // Intelligent fallback responses if no key is configured
     return res.json({
-      reply: "Gemini API Key needs to be configured in environment variables (or Vercel). Please set VITE_GEMINI_API_KEY or GEMINI_API_KEY."
+      reply: `💊 **MediRemind AI Assistant:**\n\nFor **${message}**, here is generic advice:\n- Always follow your doctor or pharmacist's specific instructions.\n- Take medications with water and note whether food is required (before vs. after meals).\n- If you missed a dose, take it as soon as remembered unless it is almost time for your next dose.\n\n*Note: Connect a Gemini API key for dynamic real-time medical guidance!*`
     });
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ 
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
+      }
+    });
 
+    // Build chat contents including conversation history
     const contents: any[] = [];
     if (Array.isArray(history)) {
       history.forEach((h: { role: string; content: string }) => {
@@ -183,36 +171,24 @@ app.post('/api/chat-medication', async (req, res) => {
     }
     contents.push({ role: 'user', parts: [{ text: message }] });
 
-    const modelsToTry = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-2.5-flash', 'gemini-2.0-flash-lite'];
-    let response: any = null;
-    let lastErr: any = null;
-
-    for (const m of modelsToTry) {
-      try {
-        response = await ai.models.generateContent({
-          model: m,
-          contents,
-          config: {
-            systemInstruction: "You are MediRemind AI, an empathetic healthcare assistant for the MediRemind application. Help users understand medication timing, side effects, and health habits clearly and concisely. Always include a brief medical disclaimer.",
-            temperature: 0.7,
-          }
-        });
-        if (response && response.text) break;
-      } catch (e) {
-        lastErr = e;
-        console.warn(`Chat model ${m} failed, trying next...`, e?.message || e);
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.6-flash',
+      contents,
+      config: {
+        systemInstruction: `You are MediRemind AI, an expert, compassionate healthcare and medication assistant. 
+Provide clear, accurate, easy-to-understand guidance on medications, dosage timings, potential side effects, food/drug interactions, and missed dose advice. 
+Structure your response cleanly using bullet points, emojis, and bold headers when helpful. 
+Always include a brief polite disclaimer at the end that you are an AI assistant and users should consult their physician or pharmacist for medical emergencies or personal prescriptions.`,
+        temperature: 0.7,
       }
-    }
+    });
 
-    if (!response || !response.text) {
-      throw lastErr || new Error('All chat models exhausted');
-    }
-
-    return res.json({ reply: response.text });
+    return res.json({ reply: response.text || 'I apologize, I could not process your question at this moment.' });
   } catch (error: any) {
-    console.error('Gemini Chat API error (exact):', error?.message || error);
-    return res.json({
-      reply: "Gemini API Key needs to be configured in environment variables (or Vercel). Please set VITE_GEMINI_API_KEY or GEMINI_API_KEY."
+    console.error('Gemini Chat API Error:', error);
+    return res.status(500).json({ 
+      error: 'Failed to generate AI response.',
+      details: error?.message || String(error)
     });
   }
 });

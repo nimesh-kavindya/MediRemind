@@ -113,13 +113,16 @@ function computeWeeklyData(medications = [], logs = [], currentAdherence = 0) {
 }
 
 export const calculateAdherenceStats = (medications = [], logs = []) => {
-  const totalMeds = medications.length;
-  const takenMeds = medications.filter(m => m.taken).length;
+  const safeMeds = Array.isArray(medications) ? medications : [];
+  const safeLogs = Array.isArray(logs) ? logs : [];
+  const totalMeds = safeMeds.length;
+  const takenMeds = safeMeds.filter(m => m && m.taken).length;
   const pendingMeds = totalMeds - takenMeds;
   const adherence = totalMeds === 0 ? 0 : Math.round((takenMeds / totalMeds) * 100);
 
   // Group by type for pie chart
-  const typeDistribution = medications.reduce((acc, med) => {
+  const typeDistribution = safeMeds.reduce((acc, med) => {
+    if (!med) return acc;
     const type = med.type || 'unknown';
     acc[type] = (acc[type] || 0) + 1;
     return acc;
@@ -130,8 +133,8 @@ export const calculateAdherenceStats = (medications = [], logs = []) => {
     value: typeDistribution[key]
   }));
 
-  const { currentStreak, longestStreak } = computeStreaks(medications, logs);
-  const weeklyData = computeWeeklyData(medications, logs, adherence);
+  const { currentStreak, longestStreak } = computeStreaks(safeMeds, safeLogs);
+  const weeklyData = computeWeeklyData(safeMeds, safeLogs, adherence);
 
   return {
     totalMeds,

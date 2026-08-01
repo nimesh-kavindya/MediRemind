@@ -3,7 +3,7 @@ import { HeartPulse, ShieldCheck, Sparkles } from 'lucide-react';
 
 export default function SplashScreen({ subtitle = "Initializing MediRemind..." }) {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white overflow-hidden select-none transition-colors duration-300">
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white overflow-hidden select-none">
       {/* Background Liquid Glass Glow Blobs */}
       <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-teal-400/20 dark:bg-teal-500/20 rounded-full blur-[120px] animate-pulse pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-cyan-400/20 dark:bg-cyan-500/20 rounded-full blur-[120px] animate-pulse pointer-events-none delay-1000" />

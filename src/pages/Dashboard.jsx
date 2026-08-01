@@ -8,6 +8,7 @@ import {
 import { collection, query, onSnapshot, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { useAuth } from '../context/AuthContext';
+import { safeGetItem, safeSetItem } from '../utils';
 import toast from 'react-hot-toast';
 
 import PageHeader from '../components/PageHeader';
@@ -41,7 +42,7 @@ export default function Dashboard() {
     let unsubscribe = () => {};
 
     const loadLocalMeds = () => {
-      const savedRaw = localStorage.getItem(`meds_${user.uid}`);
+      const savedRaw = safeGetItem(`meds_${user.uid}`, null);
       if (savedRaw === null) {
         // First initialization for new user
         const sampleMeds = [
@@ -49,11 +50,16 @@ export default function Dashboard() {
           { id: 'm2', name: 'Vitamin D3', dosage: '1000 IU', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '13:00', taken: true, totalSupply: 60, remainingSupply: 42, lowSupplyThreshold: 10, createdAt: new Date().toISOString() },
           { id: 'm3', name: 'Omeprazole', dosage: '20mg', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '20:00', taken: false, totalSupply: 30, remainingSupply: 18, lowSupplyThreshold: 5, createdAt: new Date().toISOString() }
         ];
-        localStorage.setItem(`meds_${user.uid}`, JSON.stringify(sampleMeds));
+        safeSetItem(`meds_${user.uid}`, JSON.stringify(sampleMeds));
         setMedications(sampleMeds);
       } else {
-        const saved = JSON.parse(savedRaw || '[]');
-        setMedications(saved);
+        try {
+          const saved = JSON.parse(savedRaw || '[]');
+          setMedications(Array.isArray(saved) ? saved : []);
+        } catch (e) {
+          console.error('Failed to parse meds from local storage', e);
+          setMedications([]);
+        }
       }
       setLoading(false);
     };
@@ -64,7 +70,7 @@ export default function Dashboard() {
     const fetchDoseLogs = async () => {
       try {
         const logs = await getDoseLogs(user.uid);
-        setDoseLogs(logs || []);
+        setDoseLogs(Array.isArray(logs) ? logs : []);
       } catch (err) {
         console.warn('Error fetching dose logs for streaks:', err);
       }
@@ -77,9 +83,9 @@ export default function Dashboard() {
       
       unsubscribe = onSnapshot(q, (snapshot) => {
         const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setMedications(meds);
+        setMedications(Array.isArray(meds) ? meds : []);
         setLoading(false);
-        localStorage.setItem(`meds_${user.uid}`, JSON.stringify(meds));
+        safeSetItem(`meds_${user.uid}`, JSON.stringify(meds));
         
         // Schedule notifications for upcoming
         const nextReminder = calculateNextReminder(meds);
@@ -120,7 +126,7 @@ export default function Dashboard() {
     } catch (error) {
       const updatedMeds = medications.map(m => m.id === med.id ? { ...m, remainingSupply: total } : m);
       setMedications(updatedMeds);
-      localStorage.setItem(`meds_${user?.uid}`, JSON.stringify(updatedMeds));
+      safeSetItem(`meds_${user?.uid}`, JSON.stringify(updatedMeds));
       window.dispatchEvent(new Event('local_meds_updated'));
       toast.success(`Refilled ${med.name}! Supply reset to ${total} doses.`, { icon: '📦' });
     }
@@ -150,7 +156,7 @@ export default function Dashboard() {
       // Fallback update in local state and localStorage
       const updatedMeds = medications.map(m => m.id === med.id ? { ...m, taken: updatedTaken, remainingSupply: newSupply } : m);
       setMedications(updatedMeds);
-      localStorage.setItem(`meds_${user?.uid}`, JSON.stringify(updatedMeds));
+      safeSetItem(`meds_${user?.uid}`, JSON.stringify(updatedMeds));
       window.dispatchEvent(new Event('local_meds_updated'));
       toast.success(`Marked as ${updatedTaken ? 'taken' : 'pending'}`);
     }
@@ -205,36 +211,6 @@ export default function Dashboard() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-12">
       <PageHeader title={`Welcome back, ${user?.name} 👋`} description="Here is your health overview." />
 
-      {/* AI Medication Help Chat & Scanner Banner */}
-      <Card className="border border-teal-500/30 bg-gradient-to-r from-teal-500/10 via-emerald-500/5 to-blue-500/5 p-4 shadow-sm hover:border-teal-500/50 transition-all">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-white flex items-center justify-center shrink-0 shadow-md shadow-teal-500/20">
-              <Bot size={26} />
-            </div>
-            <div>
-              <h4 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                <span>AI Help & Prescription Scanner</span>
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/30">
-                  Gemini AI
-                </span>
-              </h4>
-              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                Chat with AI for medication guidance or scan your prescriptions with camera.
-              </p>
-            </div>
-          </div>
-          <Button 
-            onClick={() => navigate('/scanner')} 
-            size="sm" 
-            className="bg-teal-600 hover:bg-teal-700 text-white font-bold shrink-0 w-full sm:w-auto shadow-sm"
-          >
-            Open AI Help & Scanner
-            <ArrowRight size={16} className="ml-1.5" />
-          </Button>
-        </div>
-      </Card>
-
       {/* Low Supply Alert Banner */}
       {lowSupplyMeds.length > 0 && (
         <Card className="border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-transparent p-5 shadow-sm">
@@ -251,7 +227,7 @@ export default function Dashboard() {
                   </span>
                 </h4>
                 <div className="flex flex-wrap gap-2 mt-1.5">
-                  {lowSupplyMeds.map(m => {
+                  {(Array.isArray(lowSupplyMeds) ? lowSupplyMeds : []).map(m => {
                     const rem = m.remainingSupply !== undefined ? parseInt(m.remainingSupply, 10) : (parseInt(m.totalSupply, 10) || 30);
                     return (
                       <span key={m.id} className="text-xs font-medium text-amber-900 dark:text-amber-200 bg-amber-500/15 px-2.5 py-1 rounded-lg border border-amber-500/20 flex items-center gap-1.5">
@@ -265,7 +241,7 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto flex-wrap">
-              {lowSupplyMeds.map(m => (
+              {(Array.isArray(lowSupplyMeds) ? lowSupplyMeds : []).map(m => (
                 <Button
                   key={m.id}
                   onClick={() => handleRefill(m)}
@@ -346,7 +322,7 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie data={typeChartData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                  {typeChartData.map((entry, index) => (
+                  {(Array.isArray(typeChartData) ? typeChartData : []).map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
@@ -355,7 +331,7 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </div>
           <div className="flex justify-center gap-4 mt-2">
-            {typeChartData.map((entry, index) => (
+            {(Array.isArray(typeChartData) ? typeChartData : []).map((entry, index) => (
               <div key={entry.name} className="flex items-center gap-2 text-xs text-gray-500 capitalize">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
                 {entry.name}
@@ -394,7 +370,7 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-3">
             <AnimatePresence mode="popLayout">
-              {filteredMeds.map((med) => (
+              {(Array.isArray(filteredMeds) ? filteredMeds : []).map((med) => (
                 <motion.div 
                   key={med.id}
                   layout

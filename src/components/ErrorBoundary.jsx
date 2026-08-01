@@ -27,11 +27,11 @@ export default class ErrorBoundary extends React.Component {
             </div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Something went wrong</h1>
             <p className="text-gray-500 dark:text-gray-400 mb-8">
-              We encountered an unexpected error. Please try refreshing the page.
+              Something went wrong, but your data is safe. Click to Refresh.
             </p>
             <Button fullWidth onClick={() => window.location.reload()} className="flex justify-center items-center gap-2">
               <RefreshCcw size={18} />
-              Reload Page
+              Click to Refresh
             </Button>
           </Card>
         </div>

@@ -1,11 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, User, Sparkles, RefreshCw, Lightbulb, ShieldAlert } from 'lucide-react';
+import { Bot, Send, User, Sparkles, RefreshCw, AlertCircle, Lightbulb, Pill, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Button from '../Button';
 import Card from '../Card';
 import toast from 'react-hot-toast';
-
-const SYSTEM_INSTRUCTION = "You are MediRemind AI, an empathetic healthcare assistant for the MediRemind application. Help users understand medication timing, side effects, and health habits clearly and concisely. Always include a brief medical disclaimer.";
 
 const SUGGESTED_PROMPTS = [
   "💊 What should I do if I miss a medication dose?",
@@ -58,52 +56,47 @@ export default function AiMedicationChat() {
     setIsLoading(true);
 
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('Gemini API Key needs to be configured in environment variables. Please set VITE_GEMINI_API_KEY.');
-      }
-
-      // Dynamically import to avoid top-level load errors if package missing
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: 'gemini-1.5-flash',
-        systemInstruction: SYSTEM_INSTRUCTION,
-      });
-
+      // Build brief history format for backend
       const historyPayload = messages
         .filter(m => m.id !== 'welcome')
-        .slice(-8)
+        .slice(-6)
         .map(m => ({
-          role: m.role === 'user' ? 'user' : 'model',
-          parts: [{ text: m.content }]
+          role: m.role,
+          content: m.content
         }));
 
-      const chat = model.startChat({
-        history: historyPayload,
+      const response = await fetch('/api/chat-medication', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: queryText,
+          history: historyPayload
+        })
       });
 
-      const result = await chat.sendMessage(queryText);
-      const response = await result.response;
-      const replyText = response.text() || 'I received your query but could not generate a reply.';
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to connect to AI server');
+      }
 
       const botMessage = {
         id: `bot_${Date.now()}`,
         role: 'assistant',
-        content: replyText,
+        content: data.reply || 'I received your query but could not format a response.',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
-      console.error('Gemini Chat Service Error:', error);
-      toast.error(error.message || 'Unable to communicate with MediRemind AI.');
+      console.error('AI Chat Error:', error);
+      toast.error('AI chat failed. Showing guidance fallback.');
       setMessages(prev => [
         ...prev,
         {
           id: `err_${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ **API Notice:** ${error.message || 'Could not complete request to MediRemind AI.'}`,
+          content: `⚠️ **Network Notice:** I am currently operating in offline mode.\n\nFor **"${queryText}"**, please consult your doctor or pharmacist. Ensure you take medications as directed with adequate water!`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -117,7 +110,7 @@ export default function AiMedicationChat() {
       {
         id: 'welcome',
         role: 'assistant',
-        content: `👋 **Hello! I am MediRemind AI Assistant.**\n\nHow can I help you with your medications today? You can ask me about:\n- Dosage instructions & timing\n- Food & drug interaction checks\n- Missed dose guidance\n- Managing common side effects`,
+        content: `👋 **Hello! I am MediRemind AI Assistant.**\n\nHow can I help you with your medications today? Ask me any questions regarding dosages, timing, or interactions!`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }
     ];
@@ -138,7 +131,7 @@ export default function AiMedicationChat() {
             <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
               MediRemind AI Medication Chat
               <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/30">
-                Gemini 1.5 Flash
+                AI Powered
               </span>
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -166,7 +159,7 @@ export default function AiMedicationChat() {
             key={idx}
             onClick={() => handleSendMessage(prompt)}
             disabled={isLoading}
-            className="text-xs font-semibold shrink-0 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:border-teal-500/50 hover:text-teal-600 dark:hover:text-teal-400 transition-all shadow-2xs whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-xs font-semibold shrink-0 px-3 py-1.5 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:border-teal-500/50 hover:text-teal-600 dark:hover:text-teal-400 transition-all shadow-2xs whitespace-nowrap"
           >
             {prompt}
           </button>
@@ -223,7 +216,7 @@ export default function AiMedicationChat() {
             <div className="w-8 h-8 rounded-xl bg-teal-500/10 flex items-center justify-center border border-teal-500/20">
               <Sparkles size={16} className="animate-spin" />
             </div>
-            <span className="animate-pulse">MediRemind AI is typing...</span>
+            <span className="animate-pulse">MediRemind AI is analyzing medication advice...</span>
           </div>
         )}
 
@@ -250,13 +243,13 @@ export default function AiMedicationChat() {
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask AI about medication dosage, side effects, interactions..."
           disabled={isLoading}
-          className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-2xl px-4 py-2.5 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all placeholder:text-slate-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-2xl px-4 py-2.5 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all placeholder:text-slate-400"
         />
         <Button
           type="submit"
           disabled={!input.trim() || isLoading}
           size="sm"
-          className="rounded-xl px-4 bg-teal-600 hover:bg-teal-700 text-white font-bold shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded-xl px-4 bg-teal-600 hover:bg-teal-700 text-white font-bold shrink-0"
         >
           <Send size={15} />
         </Button>
@@ -264,4 +257,3 @@ export default function AiMedicationChat() {
     </Card>
   );
 }
-
