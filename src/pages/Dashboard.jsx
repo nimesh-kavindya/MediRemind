@@ -44,14 +44,9 @@ export default function Dashboard() {
     const loadLocalMeds = () => {
       const savedRaw = safeGetItem(`meds_${user.uid}`, null);
       if (savedRaw === null) {
-        // First initialization for new user
-        const sampleMeds = [
-          { id: 'm1', name: 'Amoxicillin', dosage: '500mg', type: 'capsule', frequency: 'Daily', mealTiming: 'after_meal', reminderTime: '08:00', taken: false, totalSupply: 30, remainingSupply: 4, lowSupplyThreshold: 5, createdAt: new Date().toISOString() },
-          { id: 'm2', name: 'Vitamin D3', dosage: '1000 IU', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '13:00', taken: true, totalSupply: 60, remainingSupply: 42, lowSupplyThreshold: 10, createdAt: new Date().toISOString() },
-          { id: 'm3', name: 'Omeprazole', dosage: '20mg', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '20:00', taken: false, totalSupply: 30, remainingSupply: 18, lowSupplyThreshold: 5, createdAt: new Date().toISOString() }
-        ];
-        safeSetItem(`meds_${user.uid}`, JSON.stringify(sampleMeds));
-        setMedications(sampleMeds);
+        // First initialization for new user - Empty state
+        safeSetItem(`meds_${user.uid}`, JSON.stringify([]));
+        setMedications([]);
       } else {
         try {
           const saved = JSON.parse(savedRaw || '[]');
