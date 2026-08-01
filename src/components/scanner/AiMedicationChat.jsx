@@ -58,29 +58,34 @@ export default function AiMedicationChat() {
     setIsLoading(true);
 
     try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('Gemini API Key needs to be configured in environment variables. Please set VITE_GEMINI_API_KEY.');
+      }
+
+      // Dynamically import to avoid top-level load errors if package missing
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-1.5-flash',
+        systemInstruction: SYSTEM_INSTRUCTION,
+      });
+
       const historyPayload = messages
         .filter(m => m.id !== 'welcome')
         .slice(-8)
         .map(m => ({
-          role: m.role,
-          content: m.content
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.content }]
         }));
 
-      const backendRes = await fetch('/api/chat-medication', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: queryText,
-          history: historyPayload
-        })
+      const chat = model.startChat({
+        history: historyPayload,
       });
 
-      if (!backendRes.ok) {
-        throw new Error('Failed to get response from AI assistant backend');
-      }
-
-      const data = await backendRes.json();
-      const replyText = data.reply || 'I received your query but could not generate a reply.';
+      const result = await chat.sendMessage(queryText);
+      const response = await result.response;
+      const replyText = response.text() || 'I received your query but could not generate a reply.';
 
       const botMessage = {
         id: `bot_${Date.now()}`,
@@ -91,14 +96,14 @@ export default function AiMedicationChat() {
 
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
-      console.error('Gemini Chat Service Error (exact):', error);
-      toast.error('Gemini API Key needs to be configured in environment variables (or Vercel).');
+      console.error('Gemini Chat Service Error:', error);
+      toast.error(error.message || 'Unable to communicate with MediRemind AI.');
       setMessages(prev => [
         ...prev,
         {
           id: `err_${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ **API Key Configuration Notice:** Gemini API Key needs to be configured in environment variables (or Vercel). Please set VITE_GEMINI_API_KEY or GEMINI_API_KEY.`,
+          content: `⚠️ **API Notice:** ${error.message || 'Could not complete request to MediRemind AI.'}`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
