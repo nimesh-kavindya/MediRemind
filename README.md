@@ -18,6 +18,8 @@ MediRemind is a production-ready, AI-powered healthcare application designed to 
 - **Storage**: Firebase Storage (with client-side HTML5 canvas image compression).
 - **Serverless AI**: Firebase Cloud Functions (Node.js) abstracts the Gemini API, ensuring the API key is never exposed to the client.
 
+  🚀 **Live App:** [https://medi-remind-nimesh6.vercel.app](https://medi-remind-nimesh6.vercel.app)
+
 ## Setup Instructions
 
 ### 1. Install Dependencies
