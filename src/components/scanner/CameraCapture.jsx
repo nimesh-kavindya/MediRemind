@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Camera, RefreshCw, X, Check } from 'lucide-react';
 import Button from '../Button';
 import toast from 'react-hot-toast';
@@ -71,10 +71,10 @@ export default function CameraCapture({ onImageCaptured, onCancel }) {
   };
 
   // Auto-start camera when mounted
-  useState(() => {
+  useEffect(() => {
     startCamera();
     return () => stopCamera();
-  });
+  }, [startCamera]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">

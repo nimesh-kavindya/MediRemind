@@ -5,6 +5,10 @@ import ProtectedLayout from './layouts/ProtectedLayout';
 import { Toaster } from 'react-hot-toast';
 import Loader from './components/Loader';
 import ErrorBoundary from './components/ErrorBoundary';
+import { NotificationProvider } from './context/NotificationContext';
+
+import SplashScreen from './components/SplashScreen';
+import UpdateNotification from './components/UpdateNotification';
 
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
@@ -14,40 +18,48 @@ const AddMedication = lazy(() => import('./pages/AddMedication'));
 const Scanner = lazy(() => import('./pages/Scanner'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Profile = lazy(() => import('./pages/Profile'));
+const HealthTips = lazy(() => import('./pages/HealthTips'));
 const Settings = lazy(() => import('./pages/Settings'));
+const MedicationHistory = lazy(() => import('./pages/MedicationHistory'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 function App() {
   return (
     <ErrorBoundary>
-      <Router>
-        <Toaster position="top-right" />
-        <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader size="lg" /></div>}>
-        <Routes>
-          {/* Public Routes */}
-          <Route element={<PublicLayout />}>
-            <Route path="/" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-          </Route>
+      <NotificationProvider>
+        <Router>
+          <Toaster position="top-right" />
+          <UpdateNotification />
+          <Suspense fallback={<SplashScreen subtitle="Loading MediRemind..." />}>
+            <Routes>
+              {/* Public Routes */}
+              <Route element={<PublicLayout />}>
+                <Route path="/" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+              </Route>
 
-          {/* Protected Routes */}
-          <Route element={<ProtectedLayout />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/add-medication" element={<AddMedication />} />
-            <Route path="/scanner" element={<Scanner />} />
-            <Route path="/calendar" element={<Calendar />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/settings" element={<Settings />} />
-          </Route>
+              {/* Protected Routes */}
+              <Route element={<ProtectedLayout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/add-medication" element={<AddMedication />} />
+                <Route path="/scanner" element={<Scanner />} />
+                <Route path="/calendar" element={<Calendar />} />
+                <Route path="/history" element={<MedicationHistory />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/health-tips" element={<HealthTips />} />
+                <Route path="/settings" element={<Settings />} />
+              </Route>
 
-          {/* Catch all */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
-    </Router>
+              {/* Catch all */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </Router>
+      </NotificationProvider>
     </ErrorBoundary>
   );
 }
 
 export default App;
+

@@ -15,11 +15,11 @@ const Button = forwardRef(({
   const baseStyles = "inline-flex items-center justify-center rounded-xl font-medium transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none active:scale-95";
   
   const variants = {
-    primary: "bg-primary text-white hover:bg-secondary focus:ring-primary shadow-lg shadow-primary/30",
-    secondary: "bg-blue-50 text-primary hover:bg-blue-100 focus:ring-primary dark:bg-slate-800 dark:text-blue-400 dark:hover:bg-slate-700",
-    outline: "border-2 border-gray-200 hover:border-primary hover:bg-gray-50 text-gray-700 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 focus:ring-primary",
-    ghost: "hover:bg-gray-100 text-gray-700 dark:text-gray-200 dark:hover:bg-gray-800 focus:ring-gray-500",
-    danger: "bg-danger text-white hover:bg-red-600 focus:ring-danger shadow-lg shadow-danger/30"
+    primary: "bg-teal-600 dark:bg-teal-500 text-white hover:bg-teal-700 dark:hover:bg-teal-400 focus:ring-teal-500 shadow-md shadow-teal-500/20",
+    secondary: "bg-slate-100 text-slate-800 hover:bg-slate-200 focus:ring-teal-500 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700/80 border border-slate-200/80 dark:border-slate-700/80",
+    outline: "border border-slate-200 dark:border-slate-700/80 bg-white/50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800 hover:border-teal-500/80 dark:hover:border-teal-500/80 text-slate-800 dark:text-slate-200 focus:ring-teal-500 shadow-sm",
+    ghost: "hover:bg-slate-100/80 text-slate-700 dark:text-slate-200 dark:hover:bg-slate-800/80 focus:ring-teal-500",
+    danger: "bg-rose-600 text-white hover:bg-rose-700 focus:ring-rose-500 shadow-md shadow-rose-500/20"
   };
 
   const sizes = {

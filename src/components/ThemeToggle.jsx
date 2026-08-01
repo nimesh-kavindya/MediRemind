@@ -6,36 +6,45 @@ export default function ThemeToggle({ className }) {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div className={clsx("flex items-center bg-gray-100 dark:bg-gray-800 rounded-full p-1", className)}>
+    <div className={clsx("flex items-center bg-slate-200/80 dark:bg-slate-800/80 rounded-full p-0.5 sm:p-1 border border-slate-300/60 dark:border-slate-700/60 backdrop-blur-md shrink-0", className)}>
       <button
         onClick={() => setTheme('light')}
         className={clsx(
-          "p-2 rounded-full transition-all",
-          theme === 'light' ? "bg-white shadow-sm text-yellow-500" : "text-gray-400 hover:text-gray-600"
+          "p-1 sm:p-1.5 rounded-full transition-all flex items-center justify-center",
+          theme === 'light' 
+            ? "bg-white shadow-md text-amber-500 scale-105" 
+            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
         )}
         aria-label="Light mode"
+        title="Light Mode"
       >
-        <Sun size={18} />
+        <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
       </button>
       <button
         onClick={() => setTheme('system')}
         className={clsx(
-          "p-2 rounded-full transition-all",
-          theme === 'system' ? "bg-white dark:bg-gray-700 shadow-sm text-primary" : "text-gray-400 hover:text-gray-600"
+          "p-1 sm:p-1.5 rounded-full transition-all flex items-center justify-center",
+          theme === 'system' 
+            ? "bg-white dark:bg-slate-700 shadow-md text-teal-600 dark:text-teal-400 scale-105" 
+            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
         )}
         aria-label="System theme"
+        title="System Preference"
       >
-        <Monitor size={18} />
+        <Monitor className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
       </button>
       <button
         onClick={() => setTheme('dark')}
         className={clsx(
-          "p-2 rounded-full transition-all",
-          theme === 'dark' ? "bg-gray-700 shadow-sm text-blue-400" : "text-gray-400 hover:text-gray-200"
+          "p-1 sm:p-1.5 rounded-full transition-all flex items-center justify-center",
+          theme === 'dark' 
+            ? "bg-slate-900 shadow-md text-cyan-400 scale-105" 
+            : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
         )}
         aria-label="Dark mode"
+        title="Dark Mode"
       >
-        <Moon size={18} />
+        <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
       </button>
     </div>
   );

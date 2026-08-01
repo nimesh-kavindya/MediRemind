@@ -1,40 +1,82 @@
-import { useRef } from 'react';
-import { LogOut, Globe, Moon, Sun, Monitor, Bell, Download, Upload, Volume2, FileText } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  LogOut, Moon, Sun, Monitor, Bell, Download, Upload, Volume2, VolumeX, 
+  FileText, CheckCircle, AlertCircle, BellRing, Sparkles, Printer, Github, 
+  Code, ExternalLink, RefreshCw, Trash2, AlertTriangle, X, Database 
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import PageHeader from '../components/PageHeader';
 import Card from '../components/Card';
 import Button from '../components/Button';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useNotifications } from '../context/NotificationContext';
 import { clsx } from '../utils';
-import { requestNotificationPermission, scheduleLocalNotification } from '../services/notificationService';
 import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
+import { generateMedicationReportPDF } from '../services/pdfReportService';
 import Papa from 'papaparse';
 import toast from 'react-hot-toast';
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { permission, soundEnabled, setSoundEnabled, enableBrowserNotifications, sendTestNotification } = useNotifications();
   const fileInputRef = useRef(null);
 
-  const handleTestNotification = async () => {
-    const granted = await requestNotificationPermission();
-    if (granted) {
-      scheduleLocalNotification("Test Notification", { body: "Your notifications are working!" });
-    } else {
-      toast.error("Notification permission denied");
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+
+  const fetchUserMedications = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, `users/${user.uid}/medications`));
+      const firebaseMeds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if (firebaseMeds.length > 0) return firebaseMeds;
+    } catch (e) {
+      console.warn('Firestore fetch failed, reading local storage:', e);
+    }
+    return JSON.parse(localStorage.getItem(`meds_${user.uid}`) || '[]');
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      const data = await fetchUserMedications();
+      generateMedicationReportPDF(user, data);
+      toast.success('Professional PDF Report generated!');
+    } catch (e) {
+      console.error('PDF Generation failed:', e);
+      toast.error('Failed to generate PDF report');
     }
   };
 
-  const fetchUserMedications = async () => {
-    const snapshot = await getDocs(collection(db, `users/${user.uid}/medications`));
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  };
-
   const handleExportJSON = async () => {
-    const data = await fetchUserMedications();
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
-    downloadFile(dataStr, "mediremind_export.json");
+    const activeUid = user?.uid || 'demo_user';
+    const meds = await fetchUserMedications();
+    let logs = [];
+    try {
+      if (user?.uid) {
+        const logSnap = await getDocs(collection(db, `users/${user.uid}/dose_logs`));
+        logs = logSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      }
+    } catch (e) {
+      logs = JSON.parse(localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
+    }
+    if (!logs || logs.length === 0) {
+      logs = JSON.parse(localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
+    }
+
+    const exportPayload = {
+      app: 'MediRemind',
+      exportedAt: new Date().toISOString(),
+      user: user?.email || 'User',
+      medications: meds,
+      doseLogs: logs
+    };
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
+    downloadFile(dataStr, `mediremind_backup_${new Date().toISOString().slice(0, 10)}.json`);
   };
 
   const handleExportCSV = async () => {
@@ -61,35 +103,144 @@ export default function Settings() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const importedData = JSON.parse(event.target.result);
-        if (!Array.isArray(importedData)) throw new Error('Invalid format');
-        
-        const batch = writeBatch(db);
-        importedData.forEach(med => {
-          // Remove old ID, generate new one to avoid conflicts
-          const { id, ...medData } = med;
-          const newRef = doc(collection(db, `users/${user.uid}/medications`));
-          batch.set(newRef, medData);
-        });
-        
-        await batch.commit();
-        toast.success(`Imported ${importedData.length} medications!`);
+        const activeUid = user?.uid || 'demo_user';
+        const parsed = JSON.parse(event.target.result);
+
+        let importedMeds = [];
+        let importedLogs = [];
+
+        if (Array.isArray(parsed)) {
+          importedMeds = parsed;
+        } else if (typeof parsed === 'object' && parsed !== null) {
+          importedMeds = parsed.medications || parsed.meds || [];
+          importedLogs = parsed.doseLogs || parsed.logs || [];
+        }
+
+        if (!Array.isArray(importedMeds)) {
+          throw new Error('Invalid JSON backup file format');
+        }
+
+        // 1. Local storage update for Medications
+        const currentLocalMeds = JSON.parse(localStorage.getItem(`meds_${activeUid}`) || '[]');
+        const mergedMeds = [...importedMeds, ...currentLocalMeds.filter(c => !importedMeds.some(i => i.id === c.id))];
+        localStorage.setItem(`meds_${activeUid}`, JSON.stringify(mergedMeds));
+
+        // 2. Local storage update for Dose Logs
+        if (importedLogs.length > 0) {
+          const currentLocalLogs = JSON.parse(localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
+          const mergedLogs = [...importedLogs, ...currentLocalLogs.filter(c => !importedLogs.some(i => i.id === c.id))];
+          localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify(mergedLogs));
+        }
+
+        // 3. Batch sync to Firestore
+        if (user?.uid) {
+          try {
+            if (importedMeds.length > 0) {
+              const batch = writeBatch(db);
+              importedMeds.forEach(med => {
+                const { id, ...medData } = med;
+                const newRef = doc(collection(db, `users/${user.uid}/medications`));
+                batch.set(newRef, medData);
+              });
+              await batch.commit();
+            }
+
+            if (importedLogs.length > 0) {
+              const logBatch = writeBatch(db);
+              importedLogs.forEach(log => {
+                const { id, ...logData } = log;
+                const newRef = doc(collection(db, `users/${user.uid}/dose_logs`));
+                logBatch.set(newRef, logData);
+              });
+              await logBatch.commit();
+            }
+          } catch (dbErr) {
+            console.warn('Firestore import sync warning:', dbErr);
+          }
+        }
+
+        // 4. Dispatch events so all tabs refresh immediately
+        window.dispatchEvent(new Event('local_meds_updated'));
+        window.dispatchEvent(new Event('dose_logs_updated'));
+        window.dispatchEvent(new Event('scan_logs_updated'));
+        window.dispatchEvent(new Event('calendar_updated'));
+
+        toast.success(`Imported ${importedMeds.length} medications & logs! All sections updated. 🎉`);
       } catch (err) {
-        toast.error('Failed to parse JSON file.');
+        console.error('Import error:', err);
+        toast.error('Failed to parse or import JSON backup file.');
       }
     };
+
     reader.readAsText(file);
-    // reset input
-    if(fileInputRef.current) fileInputRef.current.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
+  const handleConfirmClearAll = async () => {
+    setIsClearing(true);
+    const activeUid = user?.uid || 'demo_user';
+
+    try {
+      // 1. Delete Firestore user collections
+      if (user?.uid) {
+        try {
+          const medSnap = await getDocs(collection(db, `users/${user.uid}/medications`));
+          if (!medSnap.empty) {
+            const batch1 = writeBatch(db);
+            medSnap.docs.forEach(docSnap => batch1.delete(docSnap.ref));
+            await batch1.commit();
+          }
+
+          const logSnap = await getDocs(collection(db, `users/${user.uid}/dose_logs`));
+          if (!logSnap.empty) {
+            const batch2 = writeBatch(db);
+            logSnap.docs.forEach(docSnap => batch2.delete(docSnap.ref));
+            await batch2.commit();
+          }
+
+          const scanSnap = await getDocs(collection(db, `users/${user.uid}/scan_history`));
+          if (!scanSnap.empty) {
+            const batch3 = writeBatch(db);
+            scanSnap.docs.forEach(docSnap => batch3.delete(docSnap.ref));
+            await batch3.commit();
+          }
+        } catch (fsErr) {
+          console.warn('Firestore clear batch warning:', fsErr);
+        }
+      }
+
+      // 2. Clear Local Storage keys
+      localStorage.setItem(`meds_${activeUid}`, JSON.stringify([]));
+      localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify([]));
+      localStorage.setItem(`scan_history_${activeUid}`, JSON.stringify([]));
+      localStorage.setItem(`scan_logs_${activeUid}`, JSON.stringify([]));
+
+      // 3. Dispatch global events to notify all pages (Dashboard, Add Medication, Dose History, Scanner, Calendar)
+      window.dispatchEvent(new Event('local_meds_updated'));
+      window.dispatchEvent(new Event('dose_logs_updated'));
+      window.dispatchEvent(new Event('scan_logs_updated'));
+      window.dispatchEvent(new Event('calendar_updated'));
+
+      toast.success('All application and medication data cleared successfully! 🗑️');
+      setShowClearModal(false);
+      navigate('/');
+    } catch (err) {
+      console.error('Clear data error:', err);
+      toast.error('An error occurred while clearing data.');
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <PageHeader title="Settings" />
 
+      {/* Appearance */}
       <Card>
-        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-900 dark:text-white">
-          <Monitor size={20} className="text-primary" /> Appearance
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-900 dark:text-white">
+          <Monitor size={20} className="text-teal-600 dark:text-teal-400" /> Appearance Theme
         </h3>
         <div className="grid grid-cols-3 gap-4">
           {[
@@ -101,54 +252,114 @@ export default function Settings() {
               key={t.id}
               onClick={() => setTheme(t.id)}
               className={clsx(
-                "flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all",
-                theme === t.id ? "border-primary bg-primary/5 text-primary" : "border-gray-200 dark:border-gray-700 text-gray-500"
+                "flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all font-medium text-sm",
+                theme === t.id 
+                  ? "border-teal-500 bg-teal-500/10 text-teal-700 dark:text-teal-300 font-bold shadow-sm" 
+                  : "border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50"
               )}
             >
-              <t.icon size={24} className="mb-2" />
-              <span className="text-sm font-medium">{t.label}</span>
+              <t.icon size={22} className="mb-2" />
+              <span>{t.label}</span>
             </button>
           ))}
         </div>
       </Card>
 
+      {/* Browser Notifications & Audio */}
       <Card>
-        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-900 dark:text-white">
-          <Bell size={20} className="text-primary" /> Notifications & Sound
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold flex items-center gap-2 text-slate-900 dark:text-white">
+            <Bell size={20} className="text-teal-600 dark:text-teal-400" /> Browser Medication Notifications
+          </h3>
+          <span className={clsx(
+            "text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 border",
+            permission === 'granted' 
+              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" 
+              : permission === 'denied'
+                ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20"
+                : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+          )}>
+            {permission === 'granted' && <CheckCircle size={14} />}
+            {permission === 'denied' && <AlertCircle size={14} />}
+            {permission === 'default' && <BellRing size={14} />}
+            {permission === 'granted' ? 'Active' : permission === 'denied' ? 'Permission Denied' : 'Action Required'}
+          </span>
+        </div>
+
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 rounded-xl">
             <div>
-              <p className="font-medium text-gray-900 dark:text-white">Browser Notifications</p>
-              <p className="text-sm text-gray-500">Receive reminders even when the app is closed</p>
+              <p className="font-semibold text-slate-900 dark:text-white text-sm">Scheduled Reminders</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Automatically triggers browser desktop popups at your scheduled medication times.
+              </p>
             </div>
-            <Button variant="outline" size="sm" onClick={handleTestNotification}>Enable / Test</Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button 
+                variant={permission === 'granted' ? "outline" : "primary"} 
+                size="sm" 
+                onClick={enableBrowserNotifications}
+                className={permission !== 'granted' ? "bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-950 font-bold" : ""}
+              >
+                {permission === 'granted' ? 'Re-authorize' : 'Enable Notifications'}
+              </Button>
+              <Button variant="secondary" size="sm" onClick={sendTestNotification} className="gap-1.5">
+                <Sparkles size={14} /> Test
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
-            <div>
-              <p className="font-medium text-gray-900 dark:text-white">Reminder Sound</p>
-              <p className="text-sm text-gray-500">Play a sound when a reminder triggers</p>
+
+          <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 rounded-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center">
+                {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+              </div>
+              <div>
+                <p className="font-semibold text-slate-900 dark:text-white text-sm">Audio Chime Sound</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Play a pleasant sound when a medication reminder triggers</p>
+              </div>
             </div>
-            <Volume2 className="text-gray-400" />
+            
+            <button
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className={clsx(
+                "relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none",
+                soundEnabled ? "bg-teal-500" : "bg-slate-300 dark:bg-slate-700"
+              )}
+            >
+              <span className={clsx(
+                "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                soundEnabled ? "translate-x-6" : "translate-x-1"
+              )} />
+            </button>
           </div>
         </div>
       </Card>
 
+      {/* Data Management */}
       <Card>
-        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-900 dark:text-white">
-          <Download size={20} className="text-primary" /> Data Management
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-900 dark:text-white">
+          <Database size={20} className="text-teal-600 dark:text-teal-400" /> Data Management & Medical Reports
         </h3>
-        <div className="flex flex-col gap-4">
-          <div className="flex gap-4">
-            <Button variant="outline" className="flex-1" onClick={handleExportJSON}>
+        <div className="flex flex-col gap-3">
+          <Button 
+            variant="primary" 
+            className="w-full bg-gradient-to-r from-teal-500 via-emerald-500 to-cyan-500 text-slate-950 font-bold py-3 shadow-md shadow-teal-500/20" 
+            onClick={handleExportPDF}
+          >
+            <Printer size={18} className="mr-2" /> Download Professional Medical PDF Report
+          </Button>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+            <Button variant="outline" className="w-full" onClick={handleExportJSON}>
               <Download size={16} className="mr-2" /> Export JSON
             </Button>
-            <Button variant="outline" className="flex-1" onClick={handleExportCSV}>
+            <Button variant="outline" className="w-full" onClick={handleExportCSV}>
               <FileText size={16} className="mr-2" /> Export CSV
             </Button>
           </div>
           
-          <div className="relative">
+          <div className="relative mt-1">
             <input 
               type="file" 
               accept=".json" 
@@ -157,22 +368,161 @@ export default function Settings() {
               className="hidden" 
               id="import-json"
             />
-            <label htmlFor="import-json" className="flex-1">
+            <label htmlFor="import-json" className="block w-full cursor-pointer">
               <Button variant="outline" className="w-full pointer-events-none" as="div">
-                <Upload size={16} className="mr-2" /> Import JSON
+                <Upload size={16} className="mr-2 text-teal-500" /> Import JSON Backup
               </Button>
             </label>
+          </div>
+
+          <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 mt-1">
+            <Button 
+              variant="danger" 
+              className="w-full justify-center bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 py-2.5 font-bold transition-all"
+              onClick={() => setShowClearModal(true)}
+            >
+              <Trash2 size={16} className="mr-2" /> Clear All Application Data
+            </Button>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center mt-1.5">
+              Permanently removes all added medications, dose logs, and scanner records.
+            </p>
           </div>
         </div>
       </Card>
 
+      {/* Confirmation Modal for Clearing Data */}
+      <AnimatePresence>
+        {showClearModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.93, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.93, y: 12 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 relative"
+            >
+              <button 
+                onClick={() => setShowClearModal(false)}
+                className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                disabled={isClearing}
+              >
+                <X size={18} />
+              </button>
+
+              <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-center mx-auto">
+                <AlertTriangle size={28} />
+              </div>
+
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white">
+                  Clear All Data?
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Are you sure you want to permanently delete all added medications, dose histories, scan logs, and custom schedules? <strong className="text-rose-500 dark:text-rose-400 font-bold block mt-1">This action cannot be undone.</strong>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <Button 
+                  variant="secondary" 
+                  className="flex-1 justify-center py-2.5 font-bold" 
+                  onClick={() => setShowClearModal(false)}
+                  disabled={isClearing}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="danger" 
+                  className="flex-1 justify-center py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shadow-rose-600/20" 
+                  onClick={handleConfirmClearAll}
+                  disabled={isClearing}
+                >
+                  {isClearing ? (
+                    <span className="flex items-center gap-1.5">
+                      <RefreshCw size={15} className="animate-spin" /> Clearing...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5">
+                      <Trash2 size={16} /> Yes, Clear Data
+                    </span>
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* About & Developer Info */}
       <Card>
-        <h3 className="text-lg font-bold mb-4 text-gray-900 dark:text-white">About MediRemind</h3>
-        <p className="text-gray-500 dark:text-gray-400 mb-6">Version 2.0.0 (Phase 4)<br/>AI-Powered Medication Reminder.</p>
-        <Button variant="danger" className="w-full sm:w-auto" onClick={logout}>
-          <LogOut size={20} className="mr-2" /> Logout
-        </Button>
+        <div className="flex flex-col gap-5">
+          <div>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">About MediRemind</h3>
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                v1.01
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+              Smart Personal Medication & Health Reminder Portal. Designed for seamless prescription tracking, schedule notifications, and emergency data access.
+            </p>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-50 to-teal-500/5 dark:from-slate-800/80 dark:to-slate-800/40 border border-slate-200/90 dark:border-slate-700/80 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-700/60 pb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-teal-600 dark:text-teal-400 flex items-center gap-1.5 bg-teal-500/10 dark:bg-teal-400/10 px-3 py-1 rounded-full border border-teal-500/20">
+                <Code size={14} /> Lead Developer
+              </span>
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                Author & Maintainer
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
+              <div className="relative shrink-0">
+                <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-teal-500 to-cyan-500 blur-sm opacity-50"></div>
+                <img 
+                  src="https://i.postimg.cc/G8gVR1nx/image.png" 
+                  alt="Nimesh Kavindya" 
+                  referrerPolicy="no-referrer"
+                  className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-2 border-white dark:border-slate-800 shadow-md"
+                />
+              </div>
+
+              <div className="flex-1 space-y-1">
+                <h4 className="font-extrabold text-slate-900 dark:text-white text-lg sm:text-xl">
+                  Nimesh Kavindya
+                </h4>
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-medium leading-relaxed max-w-md">
+                  BSc (Hons) Information Systems Undergraduate At SUSL
+                </p>
+                <div className="pt-2">
+                  <a 
+                    href="https://github.com/nimesh-kavindya" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 dark:bg-slate-950 text-white hover:bg-teal-600 dark:hover:bg-teal-500 transition-all text-xs font-bold shadow-sm group"
+                  >
+                    <Github size={15} className="group-hover:scale-110 transition-transform" />
+                    <span>Connect on GitHub</span>
+                    <ExternalLink size={13} className="opacity-70 group-hover:translate-x-0.5 transition-transform" />
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
+            <p className="font-medium text-center sm:text-left">
+              © 2026 MediRemind. All rights reserved.
+            </p>
+            <Button variant="danger" size="sm" onClick={logout} className="w-full sm:w-auto">
+              <LogOut size={16} className="mr-1.5" /> Logout
+            </Button>
+          </div>
+        </div>
       </Card>
     </div>
   );
 }
+

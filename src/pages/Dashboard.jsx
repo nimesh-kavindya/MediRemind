@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Calendar, Activity, Pill, AlertCircle, CheckCircle2, Circle, Search, BellRing, Trophy, Flame } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Calendar, Activity, Pill, AlertCircle, CheckCircle2, Circle, 
+  Search, BellRing, Trophy, Flame, Package, AlertTriangle, RefreshCw, Boxes, Bot, Sparkles, ArrowRight, MessageSquare
+} from 'lucide-react';
 import { collection, query, onSnapshot, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { useAuth } from '../context/AuthContext';
@@ -17,13 +21,16 @@ import Loader from '../components/Loader';
 import { calculateNextReminder } from '../services/reminderService';
 import { calculateAdherenceStats } from '../services/analyticsService';
 import { scheduleLocalNotification } from '../services/notificationService';
+import { logDoseEvent, getDoseLogs } from '../services/historyService';
 
 // Charts
 import { LineChart, Line, XAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [medications, setMedications] = useState([]);
+  const [doseLogs, setDoseLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
@@ -31,38 +38,157 @@ export default function Dashboard() {
   useEffect(() => {
     if (!user?.uid) return;
     
-    const q = query(collection(db, `users/${user.uid}/medications`), orderBy('createdAt', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setMedications(meds);
-      setLoading(false);
-      
-      // Schedule notifications for upcoming
-      const nextReminder = calculateNextReminder(meds);
-      if (nextReminder && !nextReminder.isMissed) {
-        // Just a mock scheduling demo, in real life we'd use a service worker for exact timing
-        scheduleLocalNotification(`Upcoming Dose: ${nextReminder.medication.name}`, {
-          body: `Time to take your ${nextReminder.medication.dosage} at ${nextReminder.time}.`
-        });
-      }
-    });
+    let unsubscribe = () => {};
 
-    return () => unsubscribe();
+    const loadLocalMeds = () => {
+      const savedRaw = localStorage.getItem(`meds_${user.uid}`);
+      if (savedRaw === null) {
+        // First initialization for new user
+        const sampleMeds = [
+          { id: 'm1', name: 'Amoxicillin', dosage: '500mg', type: 'capsule', frequency: 'Daily', mealTiming: 'after_meal', reminderTime: '08:00', taken: false, totalSupply: 30, remainingSupply: 4, lowSupplyThreshold: 5, createdAt: new Date().toISOString() },
+          { id: 'm2', name: 'Vitamin D3', dosage: '1000 IU', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '13:00', taken: true, totalSupply: 60, remainingSupply: 42, lowSupplyThreshold: 10, createdAt: new Date().toISOString() },
+          { id: 'm3', name: 'Omeprazole', dosage: '20mg', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '20:00', taken: false, totalSupply: 30, remainingSupply: 18, lowSupplyThreshold: 5, createdAt: new Date().toISOString() }
+        ];
+        localStorage.setItem(`meds_${user.uid}`, JSON.stringify(sampleMeds));
+        setMedications(sampleMeds);
+      } else {
+        const saved = JSON.parse(savedRaw || '[]');
+        setMedications(saved);
+      }
+      setLoading(false);
+    };
+
+    // Fast initial load from local cache for instant zero-latency UI
+    loadLocalMeds();
+
+    const fetchDoseLogs = async () => {
+      try {
+        const logs = await getDoseLogs(user.uid);
+        setDoseLogs(logs || []);
+      } catch (err) {
+        console.warn('Error fetching dose logs for streaks:', err);
+      }
+    };
+
+    fetchDoseLogs();
+
+    try {
+      const q = query(collection(db, `users/${user.uid}/medications`), orderBy('createdAt', 'desc'));
+      
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setMedications(meds);
+        setLoading(false);
+        localStorage.setItem(`meds_${user.uid}`, JSON.stringify(meds));
+        
+        // Schedule notifications for upcoming
+        const nextReminder = calculateNextReminder(meds);
+        if (nextReminder && !nextReminder.isMissed) {
+          scheduleLocalNotification(`Upcoming Dose: ${nextReminder.medication.name}`, {
+            body: `Time to take your ${nextReminder.medication.dosage} at ${nextReminder.time}.`
+          });
+        }
+      }, (error) => {
+        console.warn('Firestore snapshot error, falling back to local storage', error);
+        loadLocalMeds();
+      });
+    } catch (e) {
+      console.warn('Firestore subscription exception:', e);
+      loadLocalMeds();
+    }
+
+    const handleLocalUpdate = () => {
+      loadLocalMeds();
+      fetchDoseLogs();
+    };
+    window.addEventListener('local_meds_updated', handleLocalUpdate);
+    window.addEventListener('dose_logs_updated', fetchDoseLogs);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('local_meds_updated', handleLocalUpdate);
+      window.removeEventListener('dose_logs_updated', fetchDoseLogs);
+    };
   }, [user]);
 
-  const toggleTakenStatus = async (med) => {
+  const handleRefill = async (med) => {
+    const total = parseInt(med.totalSupply, 10) || 30;
     try {
-      const medRef = doc(db, `users/${user.uid}/medications`, med.id);
-      await updateDoc(medRef, { taken: !med.taken });
-      toast.success(`Marked as ${!med.taken ? 'taken' : 'pending'}`);
+      const medRef = doc(db, `users/${user?.uid}`, 'medications', med.id);
+      await updateDoc(medRef, { remainingSupply: total });
+      toast.success(`Refilled ${med.name}! Supply reset to ${total} doses.`, { icon: '📦' });
     } catch (error) {
-      toast.error('Failed to update status');
+      const updatedMeds = medications.map(m => m.id === med.id ? { ...m, remainingSupply: total } : m);
+      setMedications(updatedMeds);
+      localStorage.setItem(`meds_${user?.uid}`, JSON.stringify(updatedMeds));
+      window.dispatchEvent(new Event('local_meds_updated'));
+      toast.success(`Refilled ${med.name}! Supply reset to ${total} doses.`, { icon: '📦' });
     }
   };
 
-  const { totalMeds, takenMeds, pendingMeds, adherence, typeChartData, weeklyData, currentStreak, longestStreak } = calculateAdherenceStats(medications);
+  const toggleTakenStatus = async (med) => {
+    const updatedTaken = !med.taken;
+    const total = parseInt(med.totalSupply, 10) || 30;
+    const currentSupply = med.remainingSupply !== undefined ? parseInt(med.remainingSupply, 10) : total;
+    const threshold = parseInt(med.lowSupplyThreshold, 10) || 5;
+
+    let newSupply = currentSupply;
+    if (updatedTaken) {
+      newSupply = Math.max(0, currentSupply - 1);
+    } else {
+      newSupply = currentSupply + 1;
+    }
+
+    try {
+      const medRef = doc(db, `users/${user.uid}/medications`, med.id);
+      await updateDoc(medRef, { 
+        taken: updatedTaken,
+        remainingSupply: newSupply
+      });
+      toast.success(`Marked as ${updatedTaken ? 'taken' : 'pending'}`);
+    } catch (error) {
+      // Fallback update in local state and localStorage
+      const updatedMeds = medications.map(m => m.id === med.id ? { ...m, taken: updatedTaken, remainingSupply: newSupply } : m);
+      setMedications(updatedMeds);
+      localStorage.setItem(`meds_${user?.uid}`, JSON.stringify(updatedMeds));
+      window.dispatchEvent(new Event('local_meds_updated'));
+      toast.success(`Marked as ${updatedTaken ? 'taken' : 'pending'}`);
+    }
+
+    // Check low supply threshold alert when taking a dose
+    if (updatedTaken && newSupply <= threshold) {
+      scheduleLocalNotification(`⚠️ Low Supply Alert: ${med.name}`, {
+        body: `Only ${newSupply} dose${newSupply === 1 ? '' : 's'} remaining of ${med.name} (${med.dosage}). Please order a refill soon!`,
+        tag: `low_supply_${med.id}`
+      });
+      toast.error(`⚠️ Low Supply Alert: ${med.name} has only ${newSupply} doses left!`, { duration: 6000 });
+    }
+
+    // Automatically log dose history record
+    if (updatedTaken) {
+      logDoseEvent(user?.uid, {
+        medId: med.id,
+        medName: med.name,
+        dosage: med.dosage,
+        type: med.type,
+        category: med.category || 'Daily',
+        scheduledTime: med.reminderTime || 'Now',
+        status: 'taken',
+        notes: 'Logged via Dashboard'
+      });
+    }
+  };
+
+
+  const { totalMeds, takenMeds, pendingMeds, adherence, typeChartData, weeklyData, currentStreak, longestStreak } = calculateAdherenceStats(medications, doseLogs);
   const nextReminder = calculateNextReminder(medications);
+
+  const lowSupplyMeds = medications.filter(m => {
+    const total = parseInt(m.totalSupply, 10) || 30;
+    const remaining = m.remainingSupply !== undefined ? parseInt(m.remainingSupply, 10) : total;
+    const threshold = parseInt(m.lowSupplyThreshold, 10) || 5;
+    return remaining <= threshold;
+  });
 
   const filteredMeds = medications.filter(m => {
     const match = m.name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -79,24 +205,104 @@ export default function Dashboard() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-12">
       <PageHeader title={`Welcome back, ${user?.name} 👋`} description="Here is your health overview." />
 
-      {/* Next Reminder Highlight */}
-      {nextReminder && (
-        <Card className={`border-2 ${nextReminder.isMissed ? 'border-danger bg-red-50 dark:bg-red-900/10' : 'border-primary bg-blue-50 dark:bg-blue-900/10'}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-full ${nextReminder.isMissed ? 'bg-danger/20 text-danger' : 'bg-primary/20 text-primary'}`}>
-                <BellRing size={24} className={!nextReminder.isMissed ? 'animate-bounce' : ''} />
+      {/* AI Medication Help Chat & Scanner Banner */}
+      <Card className="border border-teal-500/30 bg-gradient-to-r from-teal-500/10 via-emerald-500/5 to-blue-500/5 p-4 shadow-sm hover:border-teal-500/50 transition-all">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-white flex items-center justify-center shrink-0 shadow-md shadow-teal-500/20">
+              <Bot size={26} />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                <span>AI Help & Prescription Scanner</span>
+                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-600 dark:text-teal-400 border border-teal-500/30">
+                  Gemini AI
+                </span>
+              </h4>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                Chat with AI for medication guidance or scan your prescriptions with camera.
+              </p>
+            </div>
+          </div>
+          <Button 
+            onClick={() => navigate('/scanner')} 
+            size="sm" 
+            className="bg-teal-600 hover:bg-teal-700 text-white font-bold shrink-0 w-full sm:w-auto shadow-sm"
+          >
+            Open AI Help & Scanner
+            <ArrowRight size={16} className="ml-1.5" />
+          </Button>
+        </div>
+      </Card>
+
+      {/* Low Supply Alert Banner */}
+      {lowSupplyMeds.length > 0 && (
+        <Card className="border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-transparent p-5 shadow-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-500 dark:text-amber-400 shrink-0">
+                <AlertTriangle size={24} className="animate-bounce" />
               </div>
               <div>
-                <h4 className={`text-sm font-bold uppercase ${nextReminder.isMissed ? 'text-danger' : 'text-primary'}`}>
-                  {nextReminder.isMissed ? 'Missed Dose' : 'Next Reminder'}
+                <h4 className="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
+                  <span>Low Supply Alert</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300 font-extrabold border border-amber-500/30">
+                    {lowSupplyMeds.length} Medication{lowSupplyMeds.length > 1 ? 's' : ''} Need Refill
+                  </span>
                 </h4>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">
-                  {nextReminder.time} - {nextReminder.medication.name}
+                <div className="flex flex-wrap gap-2 mt-1.5">
+                  {lowSupplyMeds.map(m => {
+                    const rem = m.remainingSupply !== undefined ? parseInt(m.remainingSupply, 10) : (parseInt(m.totalSupply, 10) || 30);
+                    return (
+                      <span key={m.id} className="text-xs font-medium text-amber-900 dark:text-amber-200 bg-amber-500/15 px-2.5 py-1 rounded-lg border border-amber-500/20 flex items-center gap-1.5">
+                        <span>{m.name}:</span>
+                        <strong className="text-amber-700 dark:text-amber-300 font-bold">{rem} dose{rem === 1 ? '' : 's'} remaining</strong>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto flex-wrap">
+              {lowSupplyMeds.map(m => (
+                <Button
+                  key={m.id}
+                  onClick={() => handleRefill(m)}
+                  size="sm"
+                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm flex items-center gap-1"
+                >
+                  <RefreshCw size={12} /> Refill {m.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Next Reminder Highlight */}
+      {nextReminder && (
+        <Card className={`relative overflow-hidden border ${nextReminder.isMissed ? 'border-red-500/50 bg-gradient-to-r from-red-500/10 via-red-500/5 to-transparent' : 'border-teal-500/50 bg-gradient-to-r from-teal-500/15 via-emerald-500/10 to-transparent'}`}>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className={`p-3.5 rounded-2xl ${nextReminder.isMissed ? 'bg-red-500/20 text-red-400' : 'bg-teal-500/20 text-teal-400'} shadow-inner`}>
+                <BellRing size={26} className={!nextReminder.isMissed ? 'animate-bounce' : ''} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[11px] font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded-full ${nextReminder.isMissed ? 'bg-red-500/20 text-red-400' : 'bg-teal-500/20 text-teal-300'}`}>
+                    {nextReminder.isMissed ? 'Missed Dose' : 'Next Dose Reminder'}
+                  </span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{nextReminder.time}</span>
+                </div>
+                <p className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
+                  {nextReminder.medication.name} <span className="text-sm font-semibold text-slate-500 dark:text-teal-300/80">({nextReminder.medication.dosage})</span>
                 </p>
               </div>
             </div>
-            <Button onClick={() => toggleTakenStatus(nextReminder.medication)}>Mark Taken</Button>
+            <Button onClick={() => toggleTakenStatus(nextReminder.medication)} className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold border-none shadow-md">
+              Mark as Taken
+            </Button>
           </div>
         </Card>
       )}
@@ -104,15 +310,17 @@ export default function Dashboard() {
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Adherence', value: `${adherence}%`, icon: Activity, color: 'text-primary' },
-          { label: 'Taken', value: takenMeds, icon: CheckCircle2, color: 'text-success' },
-          { label: 'Current Streak', value: `${currentStreak} Days`, icon: Flame, color: 'text-warning' },
-          { label: 'Best Streak', value: `${longestStreak} Days`, icon: Trophy, color: 'text-purple-500' }
+          { label: 'Adherence Rate', value: `${adherence}%`, icon: Activity, bg: 'from-teal-500/10 to-emerald-500/5', color: 'text-teal-500 dark:text-teal-400' },
+          { label: 'Doses Taken', value: takenMeds, icon: CheckCircle2, bg: 'from-emerald-500/10 to-teal-500/5', color: 'text-emerald-500 dark:text-emerald-400' },
+          { label: 'Active Streak', value: `${currentStreak} Days`, icon: Flame, bg: 'from-amber-500/10 to-orange-500/5', color: 'text-amber-500 dark:text-amber-400' },
+          { label: 'Best Record', value: `${longestStreak} Days`, icon: Trophy, bg: 'from-purple-500/10 to-indigo-500/5', color: 'text-purple-500 dark:text-purple-400' }
         ].map((stat, i) => (
-          <Card key={i} className="flex flex-col items-center justify-center p-4 text-center">
-            <stat.icon size={28} className={`${stat.color} mb-2`} />
-            <h4 className="text-2xl font-bold text-gray-900 dark:text-white">{stat.value}</h4>
-            <span className="text-xs text-gray-500 uppercase tracking-wider font-bold">{stat.label}</span>
+          <Card key={i} className={`flex flex-col items-center justify-center p-5 text-center bg-gradient-to-br ${stat.bg} relative group hover:scale-[1.02] transition-transform`}>
+            <div className={`p-3 rounded-xl bg-white dark:bg-slate-800 shadow-sm ${stat.color} mb-3`}>
+              <stat.icon size={24} />
+            </div>
+            <h4 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">{stat.value}</h4>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-bold mt-1">{stat.label}</span>
           </Card>
         ))}
       </div>
@@ -159,15 +367,22 @@ export default function Dashboard() {
 
       {/* Schedule */}
       <Card>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Today's Schedule</h3>
-          <div className="flex items-center gap-3">
-            <Input placeholder="Search..." icon={Search} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white shrink-0">Today's Schedule</h3>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+            <Input 
+              placeholder="Search medications..." 
+              icon={Search} 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              className="w-full sm:w-60"
+            />
             <select 
-              className="rounded-xl border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-gray-900 dark:text-gray-100"
-              value={filterType} onChange={(e) => setFilterType(e.target.value)}
+              className="rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-sm text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all"
+              value={filterType} 
+              onChange={(e) => setFilterType(e.target.value)}
             >
-              <option value="all">All</option>
+              <option value="all">All Status</option>
               <option value="pending">Pending</option>
               <option value="taken">Taken</option>
             </select>
@@ -175,24 +390,84 @@ export default function Dashboard() {
         </div>
 
         {filteredMeds.length === 0 ? (
-          <EmptyState icon={Pill} title="No medications found" description="Nothing matches your criteria." />
+          <EmptyState icon={Pill} title="No medications found" description="Nothing matches your current search or filter." />
         ) : (
           <div className="space-y-3">
-            {filteredMeds.map((med) => (
-              <div key={med.id} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                <div className="flex items-center gap-4">
-                  <button onClick={() => toggleTakenStatus(med)}>
-                    {med.taken ? <CheckCircle2 size={28} className="text-success fill-success/20" /> : <Circle size={28} className="text-gray-400" />}
-                  </button>
-                  <div>
-                    <h4 className={`font-semibold text-gray-900 dark:text-white ${med.taken ? 'line-through opacity-70' : ''}`}>
-                      {med.name} - {med.dosage}
-                    </h4>
-                    <p className="text-sm text-gray-500"><Calendar size={12} className="inline mr-1" />{med.reminderTime || 'Anytime'} • {med.mealTiming}</p>
+            <AnimatePresence mode="popLayout">
+              {filteredMeds.map((med) => (
+                <motion.div 
+                  key={med.id}
+                  layout
+                  initial={{ opacity: 0, y: 15, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.96 }}
+                  transition={{ duration: 0.25, ease: 'easeOut' }}
+                  className="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800/80 transition-colors shadow-xs"
+                >
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <button onClick={() => toggleTakenStatus(med)} className="shrink-0 transition-transform active:scale-90">
+                      {med.taken ? <CheckCircle2 size={26} className="text-emerald-500 fill-emerald-500/20" /> : <Circle size={26} className="text-slate-400 hover:text-teal-500" />}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <h4 className={`font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2 flex-wrap ${med.taken ? 'line-through text-slate-400 dark:text-slate-500' : ''}`}>
+                        <span>{med.name}</span>
+                        <span className="font-medium text-slate-500 dark:text-slate-400 text-xs sm:text-sm">({med.dosage})</span>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+                          {med.category || 'Daily'}
+                        </span>
+                      </h4>
+                      <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        <span className="flex items-center gap-1">
+                          <Calendar size={12} className="shrink-0" />
+                          <span>{med.reminderTime || 'Anytime'}</span>
+                          {med.mealTiming && med.mealTiming !== 'none' && (
+                            <span>• {med.mealTiming.replace('_', ' ')}</span>
+                          )}
+                        </span>
+
+                        {/* Supply Counter */}
+                        {(() => {
+                          const total = parseInt(med.totalSupply, 10) || 30;
+                          const remaining = med.remainingSupply !== undefined ? parseInt(med.remainingSupply, 10) : total;
+                          const threshold = parseInt(med.lowSupplyThreshold, 10) || 5;
+                          const isLow = remaining <= threshold;
+
+                          return (
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-md flex items-center gap-1 border ${
+                                isLow 
+                                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30' 
+                                  : 'bg-slate-200/60 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 border-slate-300/50 dark:border-slate-600/50'
+                              }`}>
+                                <Package size={11} className={isLow ? 'text-amber-500 animate-pulse' : 'text-teal-500'} />
+                                <span>{remaining}/{total} doses left</span>
+                                {isLow && <span className="font-extrabold text-[9px] uppercase tracking-wider text-amber-600 dark:text-amber-400 ml-1">• LOW</span>}
+                              </span>
+
+                              {isLow && (
+                                <button
+                                  onClick={() => handleRefill(med)}
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded bg-teal-500/10 hover:bg-teal-500/20 text-teal-700 dark:text-teal-300 border border-teal-500/20 flex items-center gap-1 transition-colors"
+                                  title="Refill supply"
+                                >
+                                  <RefreshCw size={10} /> Refill
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+
+                  <div className="shrink-0 ml-2">
+                    <span className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${med.taken ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
+                      {med.taken ? 'Done' : 'Pending'}
+                    </span>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
         )}
       </Card>

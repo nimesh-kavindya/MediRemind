@@ -24,9 +24,9 @@ const Input = forwardRef(({
         <input
           ref={ref}
           className={clsx(
-            "block w-full rounded-xl border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-gray-100 shadow-sm focus:border-primary focus:ring-primary focus:ring-2 focus:outline-none transition-colors sm:text-sm",
+            "block w-full rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-800/80 px-4 py-2.5 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 shadow-sm focus:border-teal-500 dark:focus:border-teal-400 focus:ring-2 focus:ring-teal-500/20 focus:bg-white dark:focus:bg-slate-800 focus:outline-none transition-all sm:text-sm",
             Icon && "pl-10",
-            error && "border-danger focus:border-danger focus:ring-danger",
+            error && "border-red-500 focus:border-red-500 focus:ring-red-500/20",
             className
           )}
           {...props}

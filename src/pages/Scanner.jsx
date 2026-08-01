@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, Sparkles, History, ArrowRight } from 'lucide-react';
+import { Camera, Sparkles, History, ArrowRight, Trash2, ScanLine, Bot, MessageSquare } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -16,6 +16,7 @@ import ImageUploader from '../components/scanner/ImageUploader';
 import CameraCapture from '../components/scanner/CameraCapture';
 import ScanningAnimation from '../components/scanner/ScanningAnimation';
 import ExtractedResults from '../components/scanner/ExtractedResults';
+import AiMedicationChat from '../components/scanner/AiMedicationChat';
 
 // Services
 import { uploadPrescriptionImage } from '../services/storageService';
@@ -27,6 +28,9 @@ export default function Scanner() {
   const { user } = useAuth();
   const navigate = useNavigate();
   
+  // Tab State: 'scanner' | 'chat'
+  const [activeTab, setActiveTab] = useState('scanner');
+
   // State Machine: 'idle' | 'camera' | 'uploading' | 'scanning' | 'review'
   const [step, setStep] = useState('idle');
   
@@ -41,6 +45,15 @@ export default function Scanner() {
     if (user?.uid) {
       loadHistory();
     }
+    const handleUpdate = () => {
+      if (user?.uid) loadHistory();
+    };
+    window.addEventListener('scan_logs_updated', handleUpdate);
+    window.addEventListener('local_meds_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('scan_logs_updated', handleUpdate);
+      window.removeEventListener('local_meds_updated', handleUpdate);
+    };
   }, [user]);
 
   const loadHistory = async () => {
@@ -145,18 +158,52 @@ export default function Scanner() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-12">
+    <div className="max-w-4xl mx-auto space-y-6 pb-12">
       <PageHeader 
-        title="AI Prescription Scanner" 
-        description="Extract your medications instantly from a photo of your prescription."
+        title={activeTab === 'scanner' ? "AI Prescription Scanner" : "AI Medication Assistant"} 
+        description={activeTab === 'scanner' ? "Extract your medications instantly from a photo of your prescription." : "Chat with AI about medication dosages, food interactions, and missed doses."}
         action={
-          <div className="flex items-center gap-2 bg-gradient-to-r from-primary/10 to-accent/10 text-primary px-4 py-2 rounded-full text-sm font-semibold shadow-sm">
+          <div className="flex items-center gap-2 bg-gradient-to-r from-teal-500/10 to-emerald-500/10 text-teal-600 dark:text-teal-400 px-4 py-2 rounded-full text-xs font-bold shadow-xs border border-teal-500/20">
             <Sparkles size={16} />
-            Powered by AI
+            Gemini 3.6 Flash
           </div>
         }
       />
 
+      {/* Tab Selector */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 w-full sm:w-fit">
+        <button
+          onClick={() => setActiveTab('scanner')}
+          className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            activeTab === 'scanner'
+              ? 'bg-white dark:bg-slate-900 text-teal-600 dark:text-teal-400 shadow-sm border border-slate-200/60 dark:border-slate-700/60'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <ScanLine size={16} /> Prescription Scanner
+        </button>
+
+        <button
+          onClick={() => setActiveTab('chat')}
+          className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            activeTab === 'chat'
+              ? 'bg-white dark:bg-slate-900 text-teal-600 dark:text-teal-400 shadow-sm border border-slate-200/60 dark:border-slate-700/60'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Bot size={16} /> AI Medication Help Chat
+        </button>
+      </div>
+
+      {activeTab === 'chat' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+        >
+          <AiMedicationChat />
+        </motion.div>
+      ) : (
       <AnimatePresence mode="wait">
         
         {/* IDLE STEP */}
@@ -304,6 +351,7 @@ export default function Scanner() {
         )}
 
       </AnimatePresence>
+      )}
     </div>
   );
 }

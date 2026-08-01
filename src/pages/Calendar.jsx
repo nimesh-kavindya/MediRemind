@@ -17,14 +17,37 @@ export default function Calendar() {
 
   useEffect(() => {
     const fetchMeds = async () => {
-      const q = query(collection(db, `users/${user.uid}/medications`));
-      const snapshot = await getDocs(q);
-      const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setMedications(meds);
-      setLoading(false);
+      try {
+        const q = query(collection(db, `users/${user.uid}/medications`));
+        const snapshot = await getDocs(q);
+        const meds = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (meds.length > 0) {
+          setMedications(meds);
+        } else {
+          const saved = JSON.parse(localStorage.getItem(`meds_${user.uid}`) || '[]');
+          setMedications(saved);
+        }
+      } catch (e) {
+        console.warn('Firestore fetch failed in Calendar, using local storage:', e);
+        const saved = JSON.parse(localStorage.getItem(`meds_${user.uid}`) || '[]');
+        setMedications(saved);
+      } finally {
+        setLoading(false);
+      }
     };
+
     if (user?.uid) fetchMeds();
+
+    const handleUpdate = () => fetchMeds();
+    window.addEventListener('local_meds_updated', handleUpdate);
+    window.addEventListener('calendar_updated', handleUpdate);
+
+    return () => {
+      window.removeEventListener('local_meds_updated', handleUpdate);
+      window.removeEventListener('calendar_updated', handleUpdate);
+    };
   }, [user]);
+
 
   // Generate 14 days calendar starting from start of current week
   const startDate = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -46,10 +69,10 @@ export default function Calendar() {
             <button
               key={day.toISOString()}
               onClick={() => setSelectedDate(day)}
-              className={`flex flex-col items-center justify-center p-3 rounded-2xl min-w-[70px] transition-colors ${
+              className={`flex flex-col items-center justify-center p-3.5 rounded-2xl min-w-[70px] transition-all ${
                 isSameDay(day, selectedDate)
-                  ? 'bg-primary text-white shadow-lg shadow-primary/30'
-                  : 'bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  ? 'bg-gradient-to-tr from-teal-500 via-emerald-500 to-cyan-500 text-slate-950 font-bold shadow-md shadow-teal-500/20 scale-105'
+                  : 'bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
               }`}
             >
               <span className="text-xs font-medium uppercase mb-1">{format(day, 'EEE')}</span>
