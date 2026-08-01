@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-background: #F8FAFC;
+    --color-card: #FFFFFF;
+  }
+  
+  .dark {
+    --color-background: #0F172A;
+    --color-card: #1E293B;
+  }
+  
+  body {
+    @apply bg-[var(--color-background)] transition-colors duration-300;
+  }
+}
+
+@layer utilities {
+  .shadow-soft {
+    box-shadow: 0 10px 40px -10px rgba(0,0,0,0.08);
+  }
+  
+  .dark .shadow-soft {
+    box-shadow: 0 10px 40px -10px rgba(0,0,0,0.3);
+  }
+}
