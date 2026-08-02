@@ -10,7 +10,7 @@ import { calculateAdherenceStats } from '../services/analyticsService';
 import { safeGetItem, safeSetItem } from '../utils';
 
 export default function ProtectedLayout() {
-  const { isAuthenticated, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
 
   if (loading) {
     return <SplashScreen subtitle="Opening your health portal..." />;
