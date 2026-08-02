@@ -87,6 +87,7 @@ function App() {
     localStorage.removeItem('medi_counts_backup');
     localStorage.removeItem('calendar_events');
     localStorage.removeItem('medication_calendar');
+    localStorage.removeItem('calendar_data');
     setMedications([]);
     setLogs([]);
     window.dispatchEvent(new Event('local_meds_updated'));

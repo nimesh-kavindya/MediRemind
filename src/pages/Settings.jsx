@@ -62,7 +62,11 @@ export default function Settings({ onClearAllData }) {
     }
     try {
       const activeUid = user?.uid || 'demo_user';
-      const meds = await fetchUserMedications();
+      let meds = await fetchUserMedications();
+      if (!meds || meds.length === 0) {
+        meds = JSON.parse(localStorage.getItem('medications') || localStorage.getItem(`meds_${activeUid}`) || '[]');
+      }
+
       let logs = [];
       try {
         if (user?.uid) {
@@ -70,11 +74,13 @@ export default function Settings({ onClearAllData }) {
           logs = logSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         }
       } catch (e) {
-        logs = JSON.parse(localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
+        logs = JSON.parse(localStorage.getItem('dose_logs') || localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
       }
       if (!logs || logs.length === 0) {
-        logs = JSON.parse(localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
+        logs = JSON.parse(localStorage.getItem('dose_logs') || localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
       }
+
+      const calendarEvents = JSON.parse(localStorage.getItem('calendar_events') || localStorage.getItem('medication_calendar') || '[]');
 
       const exportPayload = {
         app: 'MediRemind',
@@ -85,7 +91,9 @@ export default function Settings({ onClearAllData }) {
           photoURL: user?.photoURL || '' 
         },
         medications: meds,
-        doseLogs: logs
+        dose_logs: logs,
+        doseLogs: logs,
+        calendar_data: logs.length > 0 ? logs : calendarEvents
       };
 
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
@@ -139,7 +147,7 @@ export default function Settings({ onClearAllData }) {
           importedMeds = parsed;
         } else if (typeof parsed === 'object' && parsed !== null) {
           importedMeds = parsed.medications || parsed.meds || [];
-          importedLogs = parsed.doseLogs || parsed.logs || [];
+          importedLogs = parsed.dose_logs || parsed.doseLogs || parsed.calendar_data || parsed.logs || [];
         }
 
         if (!Array.isArray(importedMeds)) {
@@ -147,15 +155,18 @@ export default function Settings({ onClearAllData }) {
         }
 
         // 1. Local storage update for Medications
-        const currentLocalMeds = JSON.parse(localStorage.getItem(`meds_${activeUid}`) || '[]');
+        const currentLocalMeds = JSON.parse(localStorage.getItem('medications') || localStorage.getItem(`meds_${activeUid}`) || '[]');
         const mergedMeds = [...importedMeds, ...currentLocalMeds.filter(c => !importedMeds.some(i => i.id === c.id))];
+        localStorage.setItem('medications', JSON.stringify(mergedMeds));
         localStorage.setItem(`meds_${activeUid}`, JSON.stringify(mergedMeds));
 
-        // 2. Local storage update for Dose Logs
-        if (importedLogs.length > 0) {
-          const currentLocalLogs = JSON.parse(localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
+        // 2. Local storage update for Dose Logs & Calendar Data
+        if (Array.isArray(importedLogs) && importedLogs.length > 0) {
+          const currentLocalLogs = JSON.parse(localStorage.getItem('dose_logs') || localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
           const mergedLogs = [...importedLogs, ...currentLocalLogs.filter(c => !importedLogs.some(i => i.id === c.id))];
+          localStorage.setItem('dose_logs', JSON.stringify(mergedLogs));
           localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify(mergedLogs));
+          localStorage.setItem('calendar_events', JSON.stringify(mergedLogs));
         }
 
         // 3. Batch sync to Firestore
@@ -191,12 +202,14 @@ export default function Settings({ onClearAllData }) {
         window.dispatchEvent(new Event('scan_logs_updated'));
         window.dispatchEvent(new Event('calendar_updated'));
 
-        toast.success(`Imported ${importedMeds.length} medications & logs! All sections updated. 🎉`);
+        toast.success(`Imported ${importedMeds.length} medications & ${importedLogs.length} logs/calendar entries! 🎉`);
       } catch (err) {
         console.error('Import error:', err);
         toast.error('Failed to parse or import JSON backup file.');
       }
     };
+    reader.readAsText(file);
+  };
 
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -369,6 +382,7 @@ export default function Settings({ onClearAllData }) {
                 localStorage.removeItem('medi_counts_backup');
                 localStorage.removeItem('calendar_events');
                 localStorage.removeItem('medication_calendar');
+                localStorage.removeItem('calendar_data');
                 window.dispatchEvent(new Event('local_meds_updated'));
                 window.dispatchEvent(new Event('dose_logs_updated'));
                 window.dispatchEvent(new Event('calendar_updated'));
