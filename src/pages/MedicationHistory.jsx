@@ -20,9 +20,8 @@ import {
   deleteDoseLog
 } from '../services/historyService';
 
-export default function MedicationHistory() {
+export default function MedicationHistory({ logs = [], setLogs }) {
   const { user } = useAuth();
-  const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [selectedMed, setSelectedMed] = useState('all');
@@ -44,14 +43,16 @@ export default function MedicationHistory() {
     totalDosesCount: 1
   });
 
-  const loadLogs = async () => {
+  const loadLogs = () => {
     setLoading(true);
     try {
-      const data = await getDoseLogs(user?.uid);
-      setLogs(data);
+      const activeUser = user?.uid || 'demo_user';
+      const local = localStorage.getItem('dose_logs') || localStorage.getItem(`dose_logs_${activeUser}`);
+      if (local) {
+        setLogs(JSON.parse(local));
+      }
     } catch (err) {
       console.error('Error loading dose logs:', err);
-      toast.error('Failed to load history logs');
     } finally {
       setLoading(false);
     }
@@ -59,7 +60,6 @@ export default function MedicationHistory() {
 
   useEffect(() => {
     loadLogs();
-
     const handleUpdate = () => loadLogs();
     window.addEventListener('dose_logs_updated', handleUpdate);
     window.addEventListener('local_meds_updated', handleUpdate);
@@ -67,7 +67,7 @@ export default function MedicationHistory() {
       window.removeEventListener('dose_logs_updated', handleUpdate);
       window.removeEventListener('local_meds_updated', handleUpdate);
     };
-  }, [user]);
+  }, [user, setLogs]);
 
   // Unique list of medications for filter dropdown
   const medicationOptions = useMemo(() => {

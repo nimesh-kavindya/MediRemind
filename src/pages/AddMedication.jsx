@@ -15,11 +15,10 @@ import Card from '../components/Card';
 import Input from '../components/Input';
 import Button from '../components/Button';
 
-export default function AddMedication() {
+export default function AddMedication({ medications, setMedications, setLogs }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  const [medications, setMedications] = useState([]);
   const [editingMed, setEditingMed] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -146,7 +145,7 @@ export default function AddMedication() {
     loadMedications();
     window.addEventListener('local_meds_updated', loadMedications);
     return () => window.removeEventListener('local_meds_updated', loadMedications);
-  }, [user]);
+  }, [user, setMedications]);
 
   const filteredMedications = medications.filter((med) => {
     const q = searchQuery.toLowerCase().trim();
@@ -230,9 +229,35 @@ export default function AddMedication() {
         };
         updatedMeds.push(newMedData);
         toast.success(`Added ${data.name} with ${supplyVal} doses total supply!`);
+        
+        // Auto-create initial log for new med if it starts today
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (data.startDate === todayStr) {
+          const newLog = {
+            id: `log_${Date.now()}_${newMedData.id}_pending`,
+            medId: newMedData.id,
+            medName: newMedData.name,
+            dosage: newMedData.dosage,
+            type: newMedData.type,
+            category: newMedData.category,
+            scheduledTime: newMedData.reminderTime || '08:00',
+            status: 'pending',
+            dateStr: todayStr,
+            createdAt: new Date().toISOString()
+          };
+          try {
+            const existingRaw = localStorage.getItem('dose_logs') || '[]';
+            const existingLogs = JSON.parse(existingRaw);
+            const updatedLogs = [newLog, ...existingLogs];
+            localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
+            setLogs(updatedLogs);
+            window.dispatchEvent(new Event('dose_logs_updated'));
+          } catch(e) {}
+        }
       }
 
       setMedications(updatedMeds);
+      localStorage.setItem('medications', JSON.stringify(updatedMeds));
       localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
       window.dispatchEvent(new Event('local_meds_updated'));
 

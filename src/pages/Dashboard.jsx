@@ -28,11 +28,9 @@ import { logDoseEvent, getDoseLogs } from '../services/historyService';
 // Charts
 import { LineChart, Line, XAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-export default function Dashboard() {
+export default function Dashboard({ medications, setMedications, doseLogs, setDoseLogs }) {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [medications, setMedications] = useState([]);
-  const [doseLogs, setDoseLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(() => {
@@ -90,28 +88,25 @@ export default function Dashboard() {
           setMedications(meds);
         } catch (e) {
           console.error('Failed to parse meds from local storage', e);
-          setMedications([]);
         }
       }
       setLoading(false);
     };
 
-    // Fast initial load from local cache for instant zero-latency UI
     loadLocalMeds();
 
     const fetchDoseLogs = async () => {
       try {
         const logs = await getDoseLogs(user.uid);
-        setDoseLogs(Array.isArray(logs) ? logs : []);
+        if (logs && logs.length > 0) {
+           setDoseLogs(logs);
+        }
       } catch (err) {
         console.warn('Error fetching dose logs for streaks:', err);
       }
     };
 
     fetchDoseLogs();
-
-    // Removed onSnapshot to prevent remote data from overwriting local state and causing checkmark reset bug.
-    // Dashboard now strictly reads updated status from localStorage via loadLocalMeds() and local_meds_updated event.
 
     const handleLocalUpdate = () => {
       loadLocalMeds();
@@ -125,7 +120,7 @@ export default function Dashboard() {
       window.removeEventListener('local_meds_updated', handleLocalUpdate);
       window.removeEventListener('dose_logs_updated', fetchDoseLogs);
     };
-  }, [user]);
+  }, [user, setMedications, setDoseLogs]);
 
   // Auto-Missed Logic (2-Hour Overdue)
   useEffect(() => {
