@@ -74,7 +74,7 @@ export default function ProtectedLayout() {
       <div className="flex flex-col flex-1 w-full relative">
         <TopAppBar />
         
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 md:pb-8">
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 pb-36 md:pb-8">
           <div className="max-w-7xl mx-auto h-full">
             <Suspense fallback={
               <div className="flex flex-col items-center justify-center h-64 space-y-3">

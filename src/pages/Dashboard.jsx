@@ -387,7 +387,7 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
   if (loading) return <div className="flex justify-center p-12"><Loader size="lg" /></div>;
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-12">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-36">
       <PageHeader title={`Welcome back, ${user?.name} 👋`} description="Here is your health overview." />
 
       {/* Low Supply Alert Banner */}

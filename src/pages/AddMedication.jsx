@@ -266,7 +266,7 @@ export default function AddMedication({ medications, setMedications, setLogs, on
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-12">
+    <div className="max-w-4xl mx-auto space-y-8 pb-36">
       <PageHeader 
         title="Add & Manage Medications" 
         subtitle="Enter new prescriptions or modify your active list below." 

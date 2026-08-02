@@ -6,7 +6,7 @@ export default function ReminderAlertOverlay({ alerts = [], onMarkTaken, onSnooz
   if (!alerts || alerts.length === 0) return null;
 
   return (
-    <div className="fixed top-5 right-5 z-50 flex flex-col gap-3 max-w-sm w-full px-4 pointer-events-none">
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 sm:left-auto sm:right-5 sm:translate-x-0 z-50 flex flex-col gap-3 w-[92%] max-w-sm pointer-events-none">
       <AnimatePresence>
         {alerts.map((alert) => (
           <motion.div

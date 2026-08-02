@@ -70,21 +70,32 @@ export const scheduleLocalNotification = (title, options = {}, playSound = true)
 
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      const notification = new Notification(title, {
-        icon: '/pwa-192x192.png',
-        badge: '/pwa-192x192.png',
+      const payloadOptions = {
+        body: options.body || title,
+        icon: options.icon || '/pwa-192x192.png',
+        badge: options.badge || '/pwa-192x192.png',
+        tag: options.tag || 'medication-reminder',
+        vibrate: [200, 100, 200],
         requireInteraction: true,
         ...options
-      });
-      
-      notification.onclick = () => {
-        window.focus();
-        if (options.onClickUrl) {
-          window.location.hash = options.onClickUrl;
-        }
-        notification.close();
       };
-      return notification;
+
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.ready.then(registration => {
+          registration.showNotification(title, payloadOptions);
+        }).catch(() => {
+          new Notification(title, payloadOptions);
+        });
+      } else {
+        const notification = new Notification(title, payloadOptions);
+        notification.onclick = () => {
+          window.focus();
+          if (options.onClickUrl) {
+            window.location.hash = options.onClickUrl;
+          }
+          notification.close();
+        };
+      }
     } catch (e) {
       console.warn('Browser Notification creation error:', e);
       toast(title, { icon: '🔔' });

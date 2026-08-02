@@ -214,7 +214,7 @@ export default function MedicationHistory({ logs = [], setLogs }) {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-12">
+    <div className="max-w-6xl mx-auto space-y-6 pb-36">
       <style>
         {`
           @media print {

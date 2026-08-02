@@ -111,7 +111,7 @@ export function Calendar() {
   if (loading) return <div className="p-12 flex justify-center"><Loader size="lg" /></div>;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-12">
+    <div className="max-w-4xl mx-auto space-y-6 pb-36">
       <PageHeader title="Medication Calendar" description="Track your past, present, and upcoming schedule." />
 
       <Card className="overflow-x-auto">
