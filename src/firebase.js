@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
 
 const firebaseConfig = {
@@ -12,5 +12,6 @@ const firebaseConfig = {
   measurementId: "G-76T0D79R6K"
 };
 
-const app = initializeApp(firebaseConfig);
+// Prevent duplicate app initialization on hot-reload or multiple imports
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const db = getDatabase(app);
