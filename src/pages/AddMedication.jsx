@@ -312,6 +312,7 @@ export default function AddMedication({ medications, setMedications, setLogs }) 
         const activeUid = user?.uid || 'demo_user';
         const updatedMeds = medications.filter(m => m.id !== medId);
         setMedications(updatedMeds);
+        localStorage.setItem('medications', JSON.stringify(updatedMeds));
         localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
         window.dispatchEvent(new Event('local_meds_updated'));
         toast.success(`Deleted ${medName}`);
@@ -380,6 +381,7 @@ export default function AddMedication({ medications, setMedications, setLogs }) 
 
       const updatedMeds = medications.map(m => m.id === editingMed.id ? { ...m, ...updatedPayload } : m);
       setMedications(updatedMeds);
+      localStorage.setItem('medications', JSON.stringify(updatedMeds));
       localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
       window.dispatchEvent(new Event('local_meds_updated'));
 

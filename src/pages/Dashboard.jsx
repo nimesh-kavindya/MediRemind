@@ -376,7 +376,7 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
 
   const filteredMeds = medications.filter(m => {
     const medDate = m.scheduledDate || m.startDate || (m.createdAt ? m.createdAt.split('T')[0] : '');
-    const isToday = medDate === todayStr;
+    const isToday = medDate === todayStr || m.frequency === 'Daily' || !medDate;
     if (!isToday) return false;
 
     const match = m.name?.toLowerCase().includes(searchTerm.toLowerCase());

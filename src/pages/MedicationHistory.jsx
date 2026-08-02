@@ -130,7 +130,12 @@ export default function MedicationHistory({ logs = [], setLogs }) {
     if (!window.confirm('Are you sure you want to delete this dose record?')) return;
     try {
       await deleteDoseLog(user?.uid, logId);
-      setLogs(prev => prev.filter(l => l.id !== logId));
+      const updatedLogs = logs.filter(l => l.id !== logId);
+      setLogs(updatedLogs);
+      localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
+      const activeUid = user?.uid || 'demo_user';
+      localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify(updatedLogs));
+      window.dispatchEvent(new Event('dose_logs_updated'));
       toast.success('Dose record removed');
     } catch (err) {
       console.error(err);
@@ -259,12 +264,6 @@ export default function MedicationHistory({ logs = [], setLogs }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 self-end md:self-auto">
-            <button
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowLogModal(true); }}
-              className="px-3.5 py-2 rounded-xl bg-teal-600 dark:bg-teal-500 hover:bg-teal-700 dark:hover:bg-teal-400 text-white dark:text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-500/20 active:scale-95 transition-all"
-            >
-              <Plus size={16} /> Log Manual Dose
-            </button>
 
             <button
               onClick={(e) => handleExportPDF(e)}
