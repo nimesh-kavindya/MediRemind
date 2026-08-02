@@ -132,11 +132,31 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     };
   }, [user, setMedications, setDoseLogs]);
 
-  // Auto-Missed Logic (2-Hour Overdue)
+  // Auto-Missed Logic (2-Hour Overdue with 12h/24h time parsing)
   useEffect(() => {
     const checkMissed = () => {
       const todayStr = new Date().toISOString().split('T')[0];
       const now = new Date();
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+      const parseTimeToMinutes = (timeStr) => {
+        if (!timeStr || typeof timeStr !== 'string') return null;
+        const cleaned = timeStr.trim().toUpperCase();
+        const isPM = cleaned.includes('PM');
+        const isAM = cleaned.includes('AM');
+        const numericPart = cleaned.replace(/[^\d:]/g, '');
+        const parts = numericPart.split(':');
+        let hours = parseInt(parts[0], 10);
+        let minutes = parseInt(parts[1], 10) || 0;
+        if (isNaN(hours)) return null;
+
+        if (isPM && hours < 12) {
+          hours += 12;
+        } else if (isAM && hours === 12) {
+          hours = 0;
+        }
+        return hours * 60 + minutes;
+      };
 
       setMedications(prevMeds => {
         if (!Array.isArray(prevMeds) || !prevMeds.length) return prevMeds;
@@ -150,17 +170,13 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
 
           const times = Array.isArray(med?.reminderTime) ? med.reminderTime : [med?.reminderTime];
           const timeStr = times[0];
-          if (!timeStr || typeof timeStr !== 'string') return med;
+          const schedMinutes = parseTimeToMinutes(timeStr);
+          if (schedMinutes === null) return med;
 
-          const [hr, min] = timeStr.split(':').map(Number);
-          if (isNaN(hr) || isNaN(min)) return med;
+          // 2-hour (120 minutes) grace period before marking missed
+          const deadlineMinutes = schedMinutes + 120;
           
-          const schedTime = new Date();
-          schedTime.setHours(hr, min, 0, 0);
-          
-          const deadline = new Date(schedTime.getTime() + 2 * 60 * 60 * 1000);
-          
-          if (now > deadline) {
+          if (currentMinutes > deadlineMinutes) {
             updated = true;
             const activeUid = user?.uid || 'demo_user';
             const newLog = {

@@ -15,10 +15,12 @@ import Card from '../components/Card';
 import Input from '../components/Input';
 import Button from '../components/Button';
 
-export default function AddMedication({ medications, setMedications, setLogs, onDeleteMedication }) {
-  const { user } = useAuth();
+export default function AddMedication({ medications: propMeds, setMedications: propSetMeds, onDeleteMedication }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [medications, setMedications] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingMed, setEditingMed] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -97,6 +99,8 @@ export default function AddMedication({ medications, setMedications, setLogs, on
   });
 
   const onSubmit = async (data) => {
+    if (isSubmitting || isLoading) return;
+    setIsSubmitting(true);
     setIsLoading(true);
     try {
       const supplyVal = parseInt(data.totalSupply, 10) || 30;
@@ -117,10 +121,18 @@ export default function AddMedication({ medications, setMedications, setLogs, on
         createdAt: new Date().toISOString()
       };
 
-      const updatedMeds = [...medications, newMedData];
+      // Map deduplication by unique ID to prevent double submission duplicates
+      const medsMap = new Map();
+      medications.forEach(m => {
+        if (m && m.id) medsMap.set(m.id, m);
+      });
+      medsMap.set(uniqueId, newMedData);
+
+      const updatedMeds = Array.from(medsMap.values());
       toast.success(`Added ${data.name} with ${supplyVal} doses total supply!`);        
 
       setMedications(updatedMeds);
+      if (propSetMeds) propSetMeds(updatedMeds);
       localStorage.setItem('medications', JSON.stringify(updatedMeds));
       localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
       window.dispatchEvent(new Event('local_meds_updated'));
@@ -145,6 +157,7 @@ export default function AddMedication({ medications, setMedications, setLogs, on
       toast.error('Failed to save medication');
     } finally {
       setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -431,7 +444,7 @@ export default function AddMedication({ medications, setMedications, setLogs, on
               <Button type="button" variant="ghost" onClick={() => navigate('/dashboard')}>
                 View Dashboard
               </Button>
-              <Button type="submit" isLoading={isLoading} className="bg-teal-600 hover:bg-teal-700 text-white font-bold px-6">
+              <Button type="submit" isLoading={isLoading || isSubmitting} disabled={isLoading || isSubmitting} className="bg-teal-600 hover:bg-teal-700 text-white font-bold px-6">
                 Save Medication
               </Button>
             </div>
