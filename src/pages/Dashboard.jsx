@@ -389,8 +389,6 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     return remaining <= threshold;
   });
 
-  const todayStr = new Date().toISOString().split('T')[0];
-
   const filteredMeds = safeMeds.filter(m => {
     if (!m) return false;
     if (hiddenMeds.includes(m.id)) return false;
