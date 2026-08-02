@@ -156,22 +156,32 @@ export function Settings({ onClearAllData }) {
           throw new Error('Invalid JSON backup file format');
         }
 
-        // 1. Cleanly REPLACE & OVERWRITE active Medications using Map deduplication by unique id
+        // STEP 1: Clear current LocalStorage keys to prevent resurrected legacy data
+        localStorage.removeItem('medications');
+        localStorage.removeItem(`meds_${activeUid}`);
+        localStorage.removeItem('dose_logs');
+        localStorage.removeItem(`dose_logs_${activeUid}`);
+        localStorage.removeItem('calendar_events');
+        localStorage.removeItem('medication_calendar');
+
+        // STEP 2: Deduplicate imported medications strictly by unique id or normalized name
         const cleanMeds = Array.from(
-          new Map(importedMeds.map(item => [item.id || item.name, item])).values()
-        );
+          new Map(importedMeds.filter(Boolean).map(item => [item.id || item.name?.toLowerCase().trim(), item])).values()
+        ).filter(m => m && !m.archived && !m.isDeleted);
+
+        // STEP 3: Deduplicate imported dose logs
+        const cleanLogs = Array.from(
+          new Map(importedLogs.filter(Boolean).map(log => [log.id || (log.medicationId + '_' + log.timestamp), log])).values()
+        ).filter(Boolean);
+
+        // STEP 4: Write ONLY cleanMeds and cleanLogs to LocalStorage
         localStorage.setItem('medications', JSON.stringify(cleanMeds));
         localStorage.setItem(`meds_${activeUid}`, JSON.stringify(cleanMeds));
-
-        // 2. Cleanly REPLACE & OVERWRITE Dose Logs & Calendar Data using Map deduplication
-        const cleanLogs = Array.from(
-          new Map(importedLogs.map(log => [log.id || (log.medicationId + '_' + log.timestamp), log])).values()
-        );
         localStorage.setItem('dose_logs', JSON.stringify(cleanLogs));
         localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify(cleanLogs));
         localStorage.setItem('calendar_events', JSON.stringify(cleanLogs));
 
-        // 3. Realtime DB Sync for Backup Restore
+        // STEP 5: Wipe & Overwrite Firebase Realtime Database path using set()
         try {
           const { ref, set } = await import('firebase/database');
           const { db: realtimeDb } = await import('../firebase');

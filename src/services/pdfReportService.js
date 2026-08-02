@@ -25,7 +25,8 @@ export const generateMedicationReportPDF = (userData = {}, medications = [], dos
     const reportDate = format(new Date(), 'PPP p');
     const reportId = `MR-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    const safeMeds = Array.isArray(medications) ? medications.filter(Boolean) : [];
+    const safeMeds = (Array.isArray(medications) ? medications : [])
+      .filter(m => m && !m.archived && !m.isDeleted && m.name);
     const safeLogs = Array.isArray(doseLogs) && doseLogs.length > 0 
       ? doseLogs.filter(Boolean) 
       : JSON.parse(localStorage.getItem('dose_logs') || '[]');
