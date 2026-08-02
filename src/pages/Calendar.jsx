@@ -7,7 +7,7 @@ import { format, startOfWeek, addDays, isSameDay } from 'date-fns';
 import { CheckCircle2, Circle, Clock, Calendar as CalendarIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-export default function Calendar() {
+export function Calendar() {
   const { user } = useAuth();
   const [medications, setMedications] = useState([]);
   const [doseLogs, setDoseLogs] = useState([]);
@@ -202,3 +202,5 @@ export default function Calendar() {
     </div>
   );
 }
+
+export default Calendar;
