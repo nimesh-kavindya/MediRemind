@@ -1,11 +1,13 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useState, useEffect } from 'react';
 import PublicLayout from './layouts/PublicLayout';
 import ProtectedLayout from './layouts/ProtectedLayout';
 import { Toaster } from 'react-hot-toast';
 import Loader from './components/Loader';
 import ErrorBoundary from './components/ErrorBoundary';
 import { NotificationProvider } from './context/NotificationContext';
+import { ref, set, get } from 'firebase/database';
+import { db as realtimeDb } from './firebase';
 
 import SplashScreen from './components/SplashScreen';
 import UpdateNotification from './components/UpdateNotification';
@@ -49,6 +51,84 @@ function App() {
     }
   });
 
+  // 1. Initial Cloud Auto-Restore (if localStorage is empty)
+  useEffect(() => {
+    const initCloudRestore = async () => {
+      try {
+        const localMeds = localStorage.getItem('medications');
+        const localLogs = localStorage.getItem('dose_logs');
+        
+        const isMedsEmpty = !localMeds || JSON.parse(localMeds).length === 0;
+        const isLogsEmpty = !localLogs || JSON.parse(localLogs).length === 0;
+
+        if (isMedsEmpty && isLogsEmpty && realtimeDb) {
+          const appDataRef = ref(realtimeDb, 'user_app_data');
+          const snapshot = await get(appDataRef);
+          if (snapshot.exists()) {
+            const data = snapshot.val();
+            if (data?.medications && Array.isArray(data.medications) && data.medications.length > 0) {
+              localStorage.setItem('medications', JSON.stringify(data.medications));
+              setMedications(data.medications);
+            }
+            if (data?.dose_logs && Array.isArray(data.dose_logs) && data.dose_logs.length > 0) {
+              localStorage.setItem('dose_logs', JSON.stringify(data.dose_logs));
+              setLogs(data.dose_logs);
+            }
+            window.dispatchEvent(new Event('local_meds_updated'));
+            window.dispatchEvent(new Event('dose_logs_updated'));
+            window.dispatchEvent(new Event('calendar_updated'));
+          }
+        }
+      } catch (err) {
+        console.warn('Realtime Database restore failed:', err);
+      }
+    };
+
+    initCloudRestore();
+  }, []);
+
+  // 2. Background Cloud Sync on State / LocalStorage Changes
+  useEffect(() => {
+    const syncToRealtimeDb = async () => {
+      try {
+        if (!realtimeDb) return;
+        const medsRaw = localStorage.getItem('medications');
+        const logsRaw = localStorage.getItem('dose_logs');
+        const currentMeds = medsRaw ? JSON.parse(medsRaw) : medications;
+        const currentLogs = logsRaw ? JSON.parse(logsRaw) : logs;
+
+        if ((!currentMeds || currentMeds.length === 0) && (!currentLogs || currentLogs.length === 0)) {
+          return;
+        }
+
+        const appDataRef = ref(realtimeDb, 'user_app_data');
+        await set(appDataRef, {
+          medications: Array.isArray(currentMeds) ? currentMeds : [],
+          dose_logs: Array.isArray(currentLogs) ? currentLogs : [],
+          lastSynced: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Realtime Database background sync warning:', err);
+      }
+    };
+
+    const handleSync = () => {
+      syncToRealtimeDb();
+    };
+
+    window.addEventListener('local_meds_updated', handleSync);
+    window.addEventListener('dose_logs_updated', handleSync);
+
+    if (medications.length > 0 || logs.length > 0) {
+      syncToRealtimeDb();
+    }
+
+    return () => {
+      window.removeEventListener('local_meds_updated', handleSync);
+      window.removeEventListener('dose_logs_updated', handleSync);
+    };
+  }, [medications, logs]);
+
   // Centralized Master Deletion Handler
   const handleDeleteMedication = (id) => {
     const targetMed = medications.find(m => m.id === id);
@@ -80,7 +160,7 @@ function App() {
   };
 
   // Centralized Hard Reset / Clear All Data
-  const handleClearAllData = () => {
+  const handleClearAllData = async () => {
     localStorage.clear();
     localStorage.removeItem('medications');
     localStorage.removeItem('dose_logs');
@@ -90,6 +170,13 @@ function App() {
     localStorage.removeItem('calendar_data');
     setMedications([]);
     setLogs([]);
+    try {
+      if (realtimeDb) {
+        await set(ref(realtimeDb, 'user_app_data'), null);
+      }
+    } catch (e) {
+      console.warn('Realtime DB clear warning:', e);
+    }
     window.dispatchEvent(new Event('local_meds_updated'));
     window.dispatchEvent(new Event('dose_logs_updated'));
     window.dispatchEvent(new Event('calendar_updated'));
