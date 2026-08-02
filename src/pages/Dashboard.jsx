@@ -102,14 +102,17 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
 
     loadLocalMeds();
 
-    const fetchDoseLogs = async () => {
+    const fetchDoseLogs = () => {
       try {
-        const logs = await getDoseLogs(user.uid);
-        if (logs && logs.length > 0) {
-           setDoseLogs(logs);
+        const localRaw = localStorage.getItem('dose_logs');
+        if (localRaw) {
+          const localLogs = JSON.parse(localRaw);
+          if (Array.isArray(localLogs) && setDoseLogs) {
+            setDoseLogs(localLogs);
+          }
         }
       } catch (err) {
-        console.warn('Error fetching dose logs for streaks:', err);
+        console.warn('Error reading local dose logs:', err);
       }
     };
 
@@ -254,29 +257,39 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     }
   };
 
+  const isInstanceTaken = (med) => {
+    if (med.taken || med.status === 'TAKEN') return true;
+    const todayDate = new Date().toISOString().split('T')[0];
+    const safeLogs = Array.isArray(doseLogs) ? doseLogs : [];
+    const checkTime = med.displayTime || med.time;
+    return safeLogs.some(l => 
+      (l.medicationId === med.id || l.medId === med.id) && 
+      (l.date === todayDate || l.dateStr === todayDate) && 
+      (!checkTime || l.time === checkTime || l.scheduledTime === checkTime) &&
+      (l.status === 'TAKEN' || l.status === 'taken' || l.status === 'completed' || l.status === 'COMPLETED')
+    );
+  };
+
   const toggleTakenStatus = async (e, med) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
-    const updatedTaken = !med.taken;
+    const todayDate = new Date().toISOString().split('T')[0];
+    const doseTime = med.displayTime || med.time || (Array.isArray(med?.reminderTime) ? med.reminderTime[0] : med?.reminderTime) || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const currentlyTaken = isInstanceTaken(med);
+    const updatedTaken = !currentlyTaken;
+
     const total = parseInt(med.totalSupply, 10) || 30;
     const currentSupply = med.remainingSupply !== undefined ? parseInt(med.remainingSupply, 10) : total;
-    const threshold = parseInt(med.lowSupplyThreshold, 10) || 5;
+    const newSupply = updatedTaken ? Math.max(0, currentSupply - 1) : currentSupply + 1;
 
-    let newSupply = currentSupply;
-    if (updatedTaken) {
-      newSupply = Math.max(0, currentSupply - 1);
-    } else {
-      newSupply = currentSupply + 1;
-    }
-
-    // Exact, synchronous update of state and localStorage first (optimistic)
     const updatedMeds = medications.map(m => {
       if (m.id === med.id) {
         return {
           ...m,
           taken: updatedTaken,
+          status: updatedTaken ? 'TAKEN' : 'PENDING',
           remainingSupply: newSupply,
           dosesLeft: newSupply,
           remainingDoses: newSupply
@@ -287,45 +300,15 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
 
     try {
       setMedications(updatedMeds);
-      const activeUid = user?.uid || 'demo_user';
       localStorage.setItem('medications', JSON.stringify(updatedMeds));
-      safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
       window.dispatchEvent(new Event('local_meds_updated'));
-      toast.success(`Marked as ${updatedTaken ? 'taken' : 'pending'}`);
+      toast.success(`Marked ${med.name} (${doseTime}) as ${updatedTaken ? 'TAKEN' : 'PENDING'}`);
     } catch (err) {
       console.warn('Local state update failed:', err);
     }
 
-    // Update in Firestore in background
-    if (user?.uid) {
-      try {
-        const medRef = doc(db, `users/${user.uid}/medications`, med.id);
-        await updateDoc(medRef, { 
-          taken: updatedTaken,
-          remainingSupply: newSupply,
-          dosesLeft: newSupply,
-          remainingDoses: newSupply
-        });
-      } catch (error) {
-        console.warn('Firestore update background failed:', error);
-      }
-    }
-
-    // Check low supply threshold alert when taking a dose
-    if (updatedTaken && newSupply <= threshold) {
-      scheduleLocalNotification(`⚠️ Low Supply Alert: ${med.name}`, {
-        body: `Only ${newSupply} dose${newSupply === 1 ? '' : 's'} remaining of ${med.name} (${med.dosage}). Please order a refill soon!`,
-        tag: `low_supply_${med.id}`
-      });
-      toast.error(`⚠️ Low Supply Alert: ${med.name} has only ${newSupply} doses left!`, { duration: 6000 });
-    }
-
-    // Automatically log dose history record and force append to dose_logs
     if (updatedTaken) {
       const activeUid = user?.uid || 'demo_user';
-      const doseTime = med.time || (Array.isArray(med?.reminderTime) ? med.reminderTime.join(', ') : med?.reminderTime) || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const todayDate = new Date().toISOString().split('T')[0];
-
       const newLog = {
         id: Date.now().toString(),
         medicationId: med.id,
@@ -344,18 +327,15 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
       };
       
       try {
-        const existingRaw = localStorage.getItem('dose_logs') || safeGetItem(`dose_logs_${activeUid}`, '[]');
+        const existingRaw = localStorage.getItem('dose_logs') || '[]';
         const existingLogs = JSON.parse(existingRaw);
         const updatedLogs = [newLog, ...(Array.isArray(existingLogs) ? existingLogs : [])];
         localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
-        safeSetItem(`dose_logs_${activeUid}`, JSON.stringify(updatedLogs));
         if (setDoseLogs) setDoseLogs(updatedLogs);
         window.dispatchEvent(new Event('dose_logs_updated'));
       } catch (e) {
         console.warn('Failed to append dose_logs to localStorage:', e);
       }
-
-      logDoseEvent(activeUid, newLog).catch(() => {});
     }
   };
 
@@ -584,8 +564,8 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
           <div className="space-y-3">
             <AnimatePresence mode="popLayout">
               {displayScheduleCards.map((med) => {
-                const isMissed = med.isMissedMarked && !med.taken;
-                const isTaken = med.taken || med.status === 'TAKEN';
+                const isMissed = med.isMissedMarked && !isInstanceTaken(med);
+                const isTaken = isInstanceTaken(med);
                 return (
                 <motion.div 
                   key={med.instanceId || med.id}

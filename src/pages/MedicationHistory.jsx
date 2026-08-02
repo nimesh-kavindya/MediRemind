@@ -46,10 +46,12 @@ export default function MedicationHistory({ logs = [], setLogs }) {
   const loadLogs = () => {
     setLoading(true);
     try {
-      const activeUser = user?.uid || 'demo_user';
-      const local = localStorage.getItem('dose_logs') || localStorage.getItem(`dose_logs_${activeUser}`);
+      const local = localStorage.getItem('dose_logs');
       if (local) {
-        setLogs(JSON.parse(local));
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) {
+          setLogs(parsed);
+        }
       }
     } catch (err) {
       console.error('Error loading dose logs:', err);
