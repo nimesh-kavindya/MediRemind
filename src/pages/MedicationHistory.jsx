@@ -378,9 +378,9 @@ export default function MedicationHistory({ logs = [], setLogs }) {
         ) : (
           <div className="space-y-2.5">
             {(Array.isArray(filteredLogs) ? filteredLogs : []).slice(0, 50).map((log) => {
-              const isTaken = log.status === 'taken';
-              const isMissed = log.status === 'missed';
-              const isSkipped = log.status === 'skipped';
+              const isTaken = log?.status === 'taken' || log?.status === 'TAKEN';
+              const isMissed = log?.status === 'missed' || log?.status === 'MISSED';
+              const isSkipped = log?.status === 'skipped' || log?.status === 'SKIPPED';
 
               return (
                 <div 

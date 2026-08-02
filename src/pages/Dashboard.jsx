@@ -38,6 +38,16 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
   });
   const [filterType, setFilterType] = useState('all');
 
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [hiddenMeds, setHiddenMeds] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`hidden_meds_${todayStr}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
   useEffect(() => {
     const q = searchParams.get('search');
     if (q !== null) {
@@ -307,17 +317,22 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     // Automatically log dose history record and force append to dose_logs
     if (updatedTaken) {
       const activeUid = user?.uid || 'demo_user';
+      const scheduledTimeStr = Array.isArray(med?.reminderTime) ? med.reminderTime.join(', ') : (med?.reminderTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      
       const newLog = {
-        id: `log_${Date.now()}_${med.id}`,
-        medId: med.id,
-        medName: med.name,
+        id: Date.now().toString(),
+        medId: med.id, // For backward compatibility with History
+        medicationId: med.id,
+        medName: med.name, // For backward compatibility
+        medicationName: med.name,
         dosage: med.dosage,
         type: med.type,
         category: med.category || 'Daily',
-        scheduledTime: Array.isArray(med.reminderTime) ? med.reminderTime.join(', ') : (med.reminderTime || 'Now'),
-        status: 'taken',
-        notes: 'Logged via Dashboard',
-        dateStr: new Date().toISOString().split('T')[0],
+        scheduledTime: scheduledTimeStr, // For backward compatibility
+        time: scheduledTimeStr,
+        dateStr: todayStr, // For backward compatibility
+        date: todayStr,
+        status: 'taken', // Keeping 'taken' lowercase for styling compatibility, but it counts as TAKEN
         timestamp: new Date().toISOString()
       };
       
@@ -338,28 +353,15 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     }
   };
 
-  const handleDelete = async (e, medId, medName) => {
+  const handleDismiss = (e, medId) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
-    if (window.confirm(`Are you sure you want to delete ${medName}?`)) {
-      try {
-        const activeUid = user?.uid || 'demo_user';
-        const updatedMeds = medications.filter(m => m.id !== medId);
-        setMedications(updatedMeds);
-        localStorage.setItem('medications', JSON.stringify(updatedMeds));
-        safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
-        window.dispatchEvent(new Event('local_meds_updated'));
-        toast.success(`Deleted ${medName}`);
-
-        if (user?.uid) {
-          deleteMedication(user.uid, medId).catch(err => console.warn('Background delete failed', err));
-        }
-      } catch (err) {
-        toast.error('Failed to delete medication locally');
-      }
-    }
+    const newHidden = [...hiddenMeds, medId];
+    setHiddenMeds(newHidden);
+    localStorage.setItem(`hidden_meds_${todayStr}`, JSON.stringify(newHidden));
+    toast.success("Dismissed from today's schedule");
   };
 
   const { totalMeds, takenMeds, pendingMeds, adherence, typeChartData, weeklyData, currentStreak, longestStreak } = calculateAdherenceStats(medications || [], doseLogs || []);
@@ -378,13 +380,14 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
 
   const filteredMeds = safeMeds.filter(m => {
     if (!m) return false;
+    if (hiddenMeds.includes(m.id)) return false;
     const medDate = m?.scheduledDate || m?.startDate || (m?.createdAt ? String(m.createdAt).split('T')[0] : '');
     const isToday = medDate === todayStr || m?.frequency === 'Daily' || !medDate;
     if (!isToday) return false;
 
     const match = m?.name?.toLowerCase().includes((searchTerm || '').toLowerCase());
-    if (filterType === 'taken') return match && m?.taken;
-    if (filterType === 'pending') return match && !m?.taken;
+    if (filterType === 'taken') return match && (m?.taken || m?.status === 'TAKEN');
+    if (filterType === 'pending') return match && !m?.taken && m?.status !== 'TAKEN';
     return match;
   });
 
@@ -599,9 +602,9 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
                       {isMissed ? 'Missed' : (med.taken ? 'Done' : 'Pending')}
                     </span>
                     <button
-                      onClick={(e) => handleDelete(e, med.id, med.name)}
+                      onClick={(e) => handleDismiss(e, med.id)}
                       className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                      title="Delete Medication"
+                      title="Dismiss from Today"
                     >
                       <Trash2 size={18} />
                     </button>
