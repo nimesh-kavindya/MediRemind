@@ -80,11 +80,16 @@ export const generateMedicationReportPDF = (userData = {}, medications = [], dos
     doc.setTextColor(...textColor);
     doc.text(`${reportDate}`, 150, 46);
 
+    // Deduplicate active medications by unique ID or normalized Name
+    const activeUniqueMeds = Array.from(
+      new Map(safeMeds.map(item => [item?.id || item?.name?.toLowerCase().trim(), item])).values()
+    ).filter(Boolean);
+
     doc.setTextColor(...mutedTextColor);
     doc.text(`Total Medications: `, 125, 53);
     doc.setTextColor(...textColor);
     doc.setFont('helvetica', 'bold');
-    doc.text(`${safeMeds.length}`, 160, 53);
+    doc.text(`${activeUniqueMeds.length}`, 160, 53);
 
     // 3. Table of Medications
     doc.setFont('helvetica', 'bold');
@@ -110,18 +115,9 @@ export const generateMedicationReportPDF = (userData = {}, medications = [], dos
       return `${strHours}:${strMins} ${ampm}`;
     };
 
-    // Deduplicate medications by unique ID or Name
-    const uniqueMedsMap = new Map();
-    safeMeds.forEach(m => {
-      if (!m) return;
-      if (m.id) uniqueMedsMap.set(m.id, m);
-      else if (m.name) uniqueMedsMap.set(m.name, m);
-    });
-    const uniqueMeds = Array.from(uniqueMedsMap.values());
-
     const todayStr = new Date().toISOString().split('T')[0];
 
-    const tableData = uniqueMeds.map((med, index) => {
+    const tableData = activeUniqueMeds.map((med, index) => {
       const rawTimes = Array.isArray(med.reminderTime) 
         ? med.reminderTime 
         : [med.reminderTime || '08:00'];

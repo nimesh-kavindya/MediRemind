@@ -22,13 +22,29 @@ export default function Profile() {
   const [medCount, setMedCount] = useState(0);
 
   useEffect(() => {
+    const updateMedCount = () => {
+      const activeUid = user?.uid || 'demo_user';
+      const rawMeds = localStorage.getItem('medications') || localStorage.getItem(`meds_${activeUid}`) || '[]';
+      try {
+        const parsed = JSON.parse(rawMeds);
+        const safeMeds = Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+        const activeUniqueMeds = Array.from(
+          new Map(safeMeds.map(item => [item?.id || item?.name?.toLowerCase().trim(), item])).values()
+        ).filter(Boolean);
+        setMedCount(activeUniqueMeds.length);
+      } catch (e) {
+        setMedCount(0);
+      }
+    };
+
     if (user) {
       setDisplayName(user.name || '');
       setPhotoURL(user.photoURL || '');
-      const meds = JSON.parse(localStorage.getItem(`meds_${user.uid}`) || '[]');
-      setMedCount(meds.length);
-
+      updateMedCount();
     }
+
+    window.addEventListener('local_meds_updated', updateMedCount);
+    return () => window.removeEventListener('local_meds_updated', updateMedCount);
   }, [user]);
 
   const handleFileUpload = (e) => {
