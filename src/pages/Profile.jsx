@@ -8,11 +8,11 @@ import Button from '../components/Button';
 import { 
   User, Mail, Camera, Upload, Trash2, Link, 
   HeartPulse, ShieldCheck, 
-  Save, Pill, CheckCircle2 
+  Save, Pill, CheckCircle2, LogOut 
 } from 'lucide-react';
 
 export default function Profile() {
-  const { user, updateUserProfile } = useAuth();
+  const { user, updateUserProfile, logout } = useAuth();
   const [displayName, setDisplayName] = useState(user?.name || '');
   const [photoURL, setPhotoURL] = useState(user?.photoURL || '');
   const [loading, setLoading] = useState(false);
@@ -187,7 +187,15 @@ export default function Profile() {
               className="opacity-60 cursor-not-allowed bg-slate-50 dark:bg-slate-800/60"
             />
 
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2 flex justify-end gap-3">
+              <Button 
+                type="button" 
+                variant="danger" 
+                onClick={logout} 
+                className="px-6 py-2.5 shadow-md flex items-center gap-1.5"
+              >
+                <LogOut size={16} /> Logout
+              </Button>
               <Button 
                 type="submit" 
                 isLoading={loading} 

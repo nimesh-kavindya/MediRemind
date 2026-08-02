@@ -280,17 +280,18 @@ export default function MedicationHistory() {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (window.confirm("Are you sure you want to clear all data?")) {
-                    localStorage.clear();
-                    localStorage.removeItem('medications');
+                  if (window.confirm("Are you sure you want to clear your dose history? This will NOT delete your medications.")) {
+                    const activeUid = user?.uid || 'demo_user';
                     localStorage.removeItem('dose_logs');
+                    localStorage.removeItem(`dose_logs_${activeUid}`);
                     try { setLogs([]); } catch (e) {}
-                    window.location.reload(); 
+                    window.dispatchEvent(new Event('dose_logs_updated'));
+                    toast.success('Dose history cleared');
                   }
                 }}
                 className="px-3 py-2 text-xs font-semibold text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 flex items-center gap-1 transition-colors"
               >
-                <Trash2 size={15} /> Clear
+                <Trash2 size={15} /> Clear History
               </button>
             )}
           </div>

@@ -79,7 +79,11 @@ export default function Settings() {
       const exportPayload = {
         app: 'MediRemind',
         exportedAt: new Date().toISOString(),
-        user: user?.email || 'User',
+        user: { 
+          name: user?.name || user?.displayName || 'User', 
+          email: user?.email || 'Unknown', 
+          photoURL: user?.photoURL || '' 
+        },
         medications: meds,
         doseLogs: logs
       };
@@ -340,29 +344,6 @@ export default function Settings() {
             </label>
           </div>
 
-          <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800 mt-1">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (window.confirm("Are you sure you want to clear all data?")) {
-                  localStorage.clear();
-                  localStorage.removeItem('medications');
-                  localStorage.removeItem('dose_logs');
-                  try { setMedications([]); } catch (e) {}
-                  try { setLogs([]); } catch (e) {}
-                  window.location.reload(); // Hard force refresh to instantly reflect wiped state
-                }
-              }}
-              className="w-full flex items-center justify-center rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 py-2.5 font-bold transition-all"
-            >
-              <Trash2 size={16} className="mr-2" /> Clear All Data
-            </button>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center mt-1.5">
-              Permanently removes all added medications, dose logs, and scanner records.
-            </p>
-          </div>
         </div>
       </Card>
 

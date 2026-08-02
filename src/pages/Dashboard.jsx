@@ -55,15 +55,10 @@ export default function Dashboard() {
     const loadLocalMeds = () => {
       const savedRaw = localStorage.getItem('medications') || safeGetItem(`meds_${user.uid}`, null);
       if (savedRaw === null || savedRaw === '[]') {
-        // First initialization for new user
-        const sampleMeds = [
-          { id: 'm1', name: 'Amoxicillin', dosage: '500mg', type: 'capsule', frequency: 'Daily', mealTiming: 'after_meal', reminderTime: '08:00', taken: false, totalSupply: 30, remainingSupply: 4, dosesLeft: 4, remainingDoses: 4, lowSupplyThreshold: 5, createdAt: new Date().toISOString() },
-          { id: 'm2', name: 'Vitamin D3', dosage: '1000 IU', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '13:00', taken: true, totalSupply: 60, remainingSupply: 42, dosesLeft: 42, remainingDoses: 42, lowSupplyThreshold: 10, createdAt: new Date().toISOString() },
-          { id: 'm3', name: 'Omeprazole', dosage: '20mg', type: 'pill', frequency: 'Daily', mealTiming: 'before_meal', reminderTime: '20:00', taken: false, totalSupply: 30, remainingSupply: 18, dosesLeft: 18, remainingDoses: 18, lowSupplyThreshold: 5, createdAt: new Date().toISOString() }
-        ];
-        localStorage.setItem('medications', JSON.stringify(sampleMeds));
-        safeSetItem(`meds_${user.uid}`, JSON.stringify(sampleMeds));
-        setMedications(sampleMeds);
+        // First initialization for new user - start cleanly empty
+        localStorage.setItem('medications', '[]');
+        safeSetItem(`meds_${user.uid}`, '[]');
+        setMedications([]);
       } else {
         try {
           const saved = JSON.parse(savedRaw);
