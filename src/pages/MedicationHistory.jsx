@@ -404,7 +404,7 @@ export default function MedicationHistory({ logs = [], setLogs }) {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-sm text-slate-900 dark:text-white">
-                          {log?.medName || 'Unnamed'}
+                          {log?.medicationName || log?.medName || 'Unnamed'}
                         </span>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                           {log?.dosage || ''}
@@ -424,11 +424,11 @@ export default function MedicationHistory({ logs = [], setLogs }) {
                       <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
                         <span className="flex items-center gap-1">
                           <CalendarIcon size={13} className="text-teal-500" />
-                          {log?.dateStr}
+                          {log?.date || log?.dateStr}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock size={13} className="text-teal-500" />
-                          {log?.scheduledTime}
+                          {log?.time || log?.scheduledTime}
                         </span>
                         {log.notes && (
                           <span className="text-slate-600 dark:text-slate-300 italic">

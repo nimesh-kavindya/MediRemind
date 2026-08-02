@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, User, X, Clock, Info, Check, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Bell, User, X, Clock, Info, Check, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Logo from './Logo';
 import ThemeToggle from './ThemeToggle';
 import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
 
 const DEFAULT_SYSTEM_ALERTS = [
   {
@@ -27,6 +28,7 @@ export default function TopAppBar() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [overdueMeds, setOverdueMeds] = useState([]);
   const dropdownRef = useRef(null);
 
@@ -170,6 +172,22 @@ export default function TopAppBar() {
       </div>
 
       <div className="flex items-center gap-1.5 sm:gap-3">
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsRefreshing(true);
+            window.dispatchEvent(new Event('local_meds_updated'));
+            window.dispatchEvent(new Event('dose_logs_updated'));
+            toast.success('Data synced and refreshed!', { icon: '🔄' });
+            setTimeout(() => setIsRefreshing(false), 600);
+          }}
+          className="p-1.5 sm:p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 transition-colors focus:outline-none"
+          title="Refresh Data & Sync"
+        >
+          <RefreshCw className={`w-4 h-4 sm:w-5 sm:h-5 ${isRefreshing ? 'animate-spin text-teal-500' : ''}`} />
+        </button>
+
         <ThemeToggle />
         
         {/* Notification Bell with Dropdown Container */}

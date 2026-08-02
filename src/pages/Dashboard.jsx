@@ -330,33 +330,33 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     // Automatically log dose history record and force append to dose_logs
     if (updatedTaken) {
       const activeUid = user?.uid || 'demo_user';
-      const scheduledTimeStr = Array.isArray(med?.reminderTime) ? med.reminderTime.join(', ') : (med?.reminderTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-      
+      const doseTime = med.time || (Array.isArray(med?.reminderTime) ? med.reminderTime.join(', ') : med?.reminderTime) || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const todayDate = new Date().toISOString().split('T')[0];
+
       const newLog = {
         id: Date.now().toString(),
-        medId: med.id, // For backward compatibility with History
         medicationId: med.id,
-        medName: med.name, // For backward compatibility
+        medId: med.id,
         medicationName: med.name,
+        medName: med.name,
         dosage: med.dosage,
-        type: med.type,
+        type: med.type || 'pill',
         category: med.category || 'Daily',
-        scheduledTime: scheduledTimeStr, // For backward compatibility
-        time: scheduledTimeStr,
-        dateStr: todayStr, // For backward compatibility
-        date: todayStr,
-        status: 'taken', // Keeping 'taken' lowercase for styling compatibility, but it counts as TAKEN
+        time: doseTime,
+        scheduledTime: doseTime,
+        date: todayDate,
+        dateStr: todayDate,
+        status: 'TAKEN',
         timestamp: new Date().toISOString()
       };
       
-      // Append completion timestamp to dose_logs in localStorage so it remains checked
       try {
         const existingRaw = localStorage.getItem('dose_logs') || safeGetItem(`dose_logs_${activeUid}`, '[]');
         const existingLogs = JSON.parse(existingRaw);
-        const updatedLogs = [newLog, ...existingLogs];
+        const updatedLogs = [newLog, ...(Array.isArray(existingLogs) ? existingLogs : [])];
         localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
         safeSetItem(`dose_logs_${activeUid}`, JSON.stringify(updatedLogs));
-        setDoseLogs(updatedLogs);
+        if (setDoseLogs) setDoseLogs(updatedLogs);
         window.dispatchEvent(new Event('dose_logs_updated'));
       } catch (e) {
         console.warn('Failed to append dose_logs to localStorage:', e);
@@ -402,6 +402,27 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     if (filterType === 'taken') return match && (m?.taken || m?.status === 'TAKEN');
     if (filterType === 'pending') return match && !m?.taken && m?.status !== 'TAKEN';
     return match;
+  });
+
+  const displayScheduleCards = safeMeds.length === 0 ? [] : filteredMeds.flatMap(med => {
+    const times = Array.isArray(med.reminderTime) 
+      ? med.reminderTime 
+      : (med.reminderTime ? [med.reminderTime] : ['08:00']);
+    
+    if (times.length > 1) {
+      return times.map((t, idx) => ({
+        ...med,
+        instanceId: `${med.id}_time_${idx}_${t}`,
+        time: t,
+        displayTime: t
+      }));
+    }
+    return [{
+      ...med,
+      instanceId: med.id,
+      time: times[0] || '08:00',
+      displayTime: times[0] || '08:00'
+    }];
   });
 
   const COLORS = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
@@ -566,16 +587,17 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
           </div>
         </div>
 
-        {filteredMeds.length === 0 ? (
+        {displayScheduleCards.length === 0 ? (
           <EmptyState icon={Pill} title="No medications found" description="Nothing matches your current search or filter." />
         ) : (
           <div className="space-y-3">
             <AnimatePresence mode="popLayout">
-              {(Array.isArray(filteredMeds) ? filteredMeds : []).map((med) => {
+              {displayScheduleCards.map((med) => {
                 const isMissed = med.isMissedMarked && !med.taken;
+                const isTaken = med.taken || med.status === 'TAKEN';
                 return (
                 <motion.div 
-                  key={med.id}
+                  key={med.instanceId || med.id}
                   layout
                   initial={{ opacity: 0, y: 15, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -585,10 +607,10 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
                 >
                   <div className="flex items-center gap-3 sm:gap-4">
                     <button disabled={isMissed} onClick={(e) => toggleTakenStatus(e, med)} className={`shrink-0 transition-transform ${isMissed ? 'opacity-50 cursor-not-allowed' : 'active:scale-90'}`}>
-                      {med.taken ? <CheckCircle2 size={26} className="text-emerald-500 fill-emerald-500/20" /> : <Circle size={26} className={`${isMissed ? 'text-red-400' : 'text-slate-400 hover:text-teal-500'}`} />}
+                      {isTaken ? <CheckCircle2 size={26} className="text-emerald-500 fill-emerald-500/20" /> : <Circle size={26} className={`${isMissed ? 'text-red-400' : 'text-slate-400 hover:text-teal-500'}`} />}
                     </button>
                     <div className="min-w-0 flex-1">
-                      <h4 className={`font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2 flex-wrap ${med?.taken ? 'line-through text-slate-400 dark:text-slate-500' : ''}`}>
+                      <h4 className={`font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2 flex-wrap ${isTaken ? 'line-through text-slate-400 dark:text-slate-500' : ''}`}>
                         <span>{med?.name || 'Unnamed'}</span>
                         <span className="font-medium text-slate-500 dark:text-slate-400 text-xs sm:text-sm">({med?.dosage || ''})</span>
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
@@ -598,10 +620,10 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
                       <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         <span className="flex items-center gap-1">
                           <Calendar size={12} className="shrink-0" />
-                          <span className="font-medium">{med.scheduledDate || med.startDate || (med.createdAt ? med.createdAt.split('T')[0] : '')}</span>
+                          <span className="font-medium">{med.scheduledDate || med.startDate || (med.createdAt ? String(med.createdAt).split('T')[0] : '')}</span>
                           <span className="mx-0.5">•</span>
                           <Clock size={12} className="shrink-0 ml-1" />
-                          <span>{Array.isArray(med?.reminderTime) ? med.reminderTime.join(', ') : (med?.reminderTime || 'Anytime')}</span>
+                          <span>{med.displayTime || med.time || (Array.isArray(med?.reminderTime) ? med.reminderTime.join(', ') : (med?.reminderTime || 'Anytime'))}</span>
                           {med?.mealTiming && med.mealTiming !== 'none' && (
                             <span>• {String(med.mealTiming).replace('_', ' ')}</span>
                           )}
@@ -611,8 +633,8 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0 ml-2">
-                    <span className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${isMissed ? 'bg-red-500/10 text-red-600 dark:text-red-400' : (med.taken ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400')}`}>
-                      {isMissed ? 'Missed' : (med.taken ? 'Done' : 'Pending')}
+                    <span className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${isMissed ? 'bg-red-500/10 text-red-600 dark:text-red-400' : (isTaken ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400')}`}>
+                      {isMissed ? 'Missed' : (isTaken ? 'Done' : 'Pending')}
                     </span>
                     <button
                       onClick={(e) => handleDismiss(e, med.id)}
