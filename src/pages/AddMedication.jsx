@@ -101,8 +101,11 @@ export default function AddMedication({ medications, setMedications, setLogs, on
     try {
       const supplyVal = parseInt(data.totalSupply, 10) || 30;
       const thresholdVal = parseInt(data.lowSupplyThreshold, 10) || 5;
+      const activeUid = user?.uid || 'demo_user';
+      const uniqueId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
       const newMedData = {
-        id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        id: uniqueId,
         ...data,
         scheduledDate: data.startDate,
         totalSupply: supplyVal,
@@ -113,33 +116,9 @@ export default function AddMedication({ medications, setMedications, setLogs, on
         taken: false,
         createdAt: new Date().toISOString()
       };
+
       const updatedMeds = [...medications, newMedData];
       toast.success(`Added ${data.name} with ${supplyVal} doses total supply!`);        
-        // Auto-create initial log for new med if it starts today
-        const todayStr = new Date().toISOString().split('T')[0];
-        if (data.startDate === todayStr) {
-          const newLog = {
-            id: `log_${Date.now()}_${newMedData.id}_pending`,
-            medId: newMedData.id,
-            medName: newMedData.name,
-            dosage: newMedData.dosage,
-            type: newMedData.type,
-            category: newMedData.category,
-            scheduledTime: newMedData.reminderTime || '08:00',
-            status: 'pending',
-            dateStr: todayStr,
-            createdAt: new Date().toISOString()
-          };
-          try {
-            const existingRaw = localStorage.getItem('dose_logs') || '[]';
-            const existingLogs = JSON.parse(existingRaw);
-            const updatedLogs = [newLog, ...existingLogs];
-            localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
-            setLogs(updatedLogs);
-            window.dispatchEvent(new Event('dose_logs_updated'));
-          } catch(e) {}
-        }
-      }
 
       setMedications(updatedMeds);
       localStorage.setItem('medications', JSON.stringify(updatedMeds));
@@ -147,6 +126,9 @@ export default function AddMedication({ medications, setMedications, setLogs, on
       window.dispatchEvent(new Event('local_meds_updated'));
 
       reset({
+        name: '',
+        dosage: '',
+        reminderTime: '08:00',
         type: 'pill',
         category: 'Daily',
         mealTiming: 'after_meal',
@@ -156,14 +138,10 @@ export default function AddMedication({ medications, setMedications, setLogs, on
       });
 
       if (user?.uid) {
-        if (existing) {
-          updateMedication(user.uid, existing.id, newMedData).catch(e => console.warn('Background sync failed', e));
-        } else {
-          addMedication(user.uid, newMedData).catch(e => console.warn('Background sync failed', e));
-        }
+        addMedication(user.uid, newMedData).catch(e => console.warn('Background sync failed', e));
       }
     } catch (error) {
-      console.error('Error adding/updating medication locally:', error);
+      console.error('Error adding medication locally:', error);
       toast.error('Failed to save medication');
     } finally {
       setIsLoading(false);
