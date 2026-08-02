@@ -347,6 +347,33 @@ export default function Settings() {
         </div>
       </Card>
 
+      {/* Danger Zone: Emergency Reset */}
+      <Card className="border border-rose-500/30 bg-rose-500/5 dark:bg-rose-950/10">
+        <h3 className="text-lg font-bold mb-2 flex items-center gap-2 text-rose-600 dark:text-rose-400">
+          <AlertTriangle size={20} /> Danger Zone
+        </h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+          Resetting all app data will permanently wipe all local medications, dose history logs, and local caches. This action cannot be undone.
+        </p>
+        <Button 
+          variant="danger"
+          className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 shadow-md flex items-center justify-center gap-2"
+          onClick={() => {
+            if (window.confirm("Are you sure you want to clear all medications and logs? This cannot be undone.")) {
+              localStorage.clear();
+              window.dispatchEvent(new Event('local_meds_updated'));
+              window.dispatchEvent(new Event('dose_logs_updated'));
+              toast.success("All app data cleared successfully");
+              setTimeout(() => {
+                window.location.reload();
+              }, 300);
+            }
+          }}
+        >
+          <Trash2 size={16} /> Reset All App Data (Clear Data)
+        </Button>
+      </Card>
+
       {/* About & Developer Info */}
       <Card>
         <div className="flex flex-col gap-5">
