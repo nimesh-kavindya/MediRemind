@@ -1,13 +1,14 @@
 import { parse, isAfter, isBefore, format, addDays, parseISO } from 'date-fns';
 
-export const calculateNextReminder = (medications) => {
+export const calculateNextReminder = (medications = []) => {
   const now = new Date();
+  const safeMeds = Array.isArray(medications) ? medications.filter(Boolean) : [];
   
   // Sort medications by their next upcoming reminder time for today
   const upcomingMeds = [];
-  medications
-    .filter(m => !m.taken)
-    .filter(m => m.reminderTime)
+  safeMeds
+    .filter(m => m && !m.taken)
+    .filter(m => m && m.reminderTime)
     .forEach(m => {
       const times = Array.isArray(m.reminderTime) ? m.reminderTime : [m.reminderTime].filter(Boolean);
       times.forEach(timeStr => {

@@ -69,14 +69,18 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
         setMedications([]);
       } else {
         try {
+          const deletedRaw = localStorage.getItem('deleted_medication_ids') || '[]';
+          let deletedIds = [];
+          try { deletedIds = JSON.parse(deletedRaw); } catch(e) {}
+
           const saved = JSON.parse(savedRaw);
-          let meds = Array.isArray(saved) ? saved : [];
+          let meds = Array.isArray(saved) ? saved.filter(m => m && m.id && !deletedIds.includes(m.id)) : [];
           
           // Roll over daily medications to the current date and reset 'taken' status
           const todayStr = new Date().toISOString().split('T')[0];
           let updated = false;
           meds = meds.map(m => {
-            const medDate = m.scheduledDate || m.startDate || (m.createdAt ? m.createdAt.split('T')[0] : '');
+            const medDate = m.scheduledDate || m.startDate || (m.createdAt ? String(m.createdAt).split('T')[0] : '');
             if (m.frequency === 'Daily' && medDate < todayStr) {
               if (!m.endDate || todayStr <= m.endDate) {
                 updated = true;
@@ -134,69 +138,78 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
 
   // Auto-Missed Logic (2-Hour Overdue)
   useEffect(() => {
-    if (!medications.length) return;
-
     const checkMissed = () => {
       const todayStr = new Date().toISOString().split('T')[0];
       const now = new Date();
-      let updated = false;
 
-      const updatedMeds = medications.map(med => {
-        if (med.taken || med.isMissedMarked) return med;
-        const medDate = med.scheduledDate || med.startDate || (med.createdAt ? med.createdAt.split('T')[0] : '');
-        if (medDate !== todayStr) return med;
-        if (!med.reminderTime) return med;
+      setMedications(prevMeds => {
+        if (!Array.isArray(prevMeds) || !prevMeds.length) return prevMeds;
+        let updated = false;
 
-        const times = Array.isArray(med?.reminderTime) ? med.reminderTime : [med?.reminderTime];
-        const timeStr = times[0];
-        if (!timeStr || typeof timeStr !== 'string') return med;
+        const updatedMeds = prevMeds.map(med => {
+          if (!med || med.taken || med.isMissedMarked) return med;
+          const medDate = med.scheduledDate || med.startDate || (med.createdAt ? String(med.createdAt).split('T')[0] : '');
+          if (medDate !== todayStr) return med;
+          if (!med.reminderTime) return med;
 
-        const [hr, min] = timeStr.split(':').map(Number);
-        const schedTime = new Date();
-        schedTime.setHours(hr, min, 0, 0);
-        
-        const deadline = new Date(schedTime.getTime() + 2 * 60 * 60 * 1000);
-        
-        if (now > deadline) {
-          updated = true;
-          const activeUid = user?.uid || 'demo_user';
-          const newLog = {
-            id: `log_${Date.now()}_${med.id}_missed`,
-            medId: med.id,
-            medName: med.name,
-            dosage: med.dosage,
-            type: med.type,
-            category: med.category || 'Daily',
-            scheduledTime: timeStr,
-            status: 'missed',
-            notes: 'Auto-marked as missed (2 hours overdue)',
-            dateStr: todayStr,
-            timestamp: now.toISOString(),
-            createdAt: now.toISOString()
-          };
+          const times = Array.isArray(med?.reminderTime) ? med.reminderTime : [med?.reminderTime];
+          const timeStr = times[0];
+          if (!timeStr || typeof timeStr !== 'string') return med;
+
+          const [hr, min] = timeStr.split(':').map(Number);
+          if (isNaN(hr) || isNaN(min)) return med;
           
-          try {
-            const existingRaw = localStorage.getItem('dose_logs') || safeGetItem(`dose_logs_${activeUid}`, '[]');
-            const existingLogs = JSON.parse(existingRaw);
-            const updatedLogs = [newLog, ...existingLogs];
-            localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
-            safeSetItem(`dose_logs_${activeUid}`, JSON.stringify(updatedLogs));
-            window.dispatchEvent(new Event('dose_logs_updated'));
-          } catch (e) {
-            console.warn('Failed to append missed log:', e);
+          const schedTime = new Date();
+          schedTime.setHours(hr, min, 0, 0);
+          
+          const deadline = new Date(schedTime.getTime() + 2 * 60 * 60 * 1000);
+          
+          if (now > deadline) {
+            updated = true;
+            const activeUid = user?.uid || 'demo_user';
+            const newLog = {
+              id: `log_${Date.now()}_${med.id}_missed`,
+              medId: med.id,
+              medicationId: med.id,
+              medName: med.name,
+              medicationName: med.name,
+              dosage: med.dosage,
+              type: med.type,
+              category: med.category || 'Daily',
+              scheduledTime: timeStr,
+              time: timeStr,
+              status: 'missed',
+              notes: 'Auto-marked as missed (2 hours overdue)',
+              dateStr: todayStr,
+              date: todayStr,
+              timestamp: now.toISOString(),
+              createdAt: now.toISOString()
+            };
+            
+            try {
+              const existingRaw = localStorage.getItem('dose_logs') || safeGetItem(`dose_logs_${activeUid}`, '[]');
+              const existingLogs = JSON.parse(existingRaw);
+              const updatedLogs = [newLog, ...existingLogs];
+              localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
+              safeSetItem(`dose_logs_${activeUid}`, JSON.stringify(updatedLogs));
+              window.dispatchEvent(new Event('dose_logs_updated'));
+            } catch (e) {
+              console.warn('Failed to append missed log:', e);
+            }
+
+            return { ...med, isMissedMarked: true };
           }
+          return med;
+        });
 
-          return { ...med, isMissedMarked: true };
+        if (updated) {
+          const activeUid = user?.uid || 'demo_user';
+          localStorage.setItem('medications', JSON.stringify(updatedMeds));
+          safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
+          return updatedMeds;
         }
-        return med;
+        return prevMeds;
       });
-
-      if (updated) {
-        setMedications(updatedMeds);
-        const activeUid = user?.uid || 'demo_user';
-        localStorage.setItem('medications', JSON.stringify(updatedMeds));
-        safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
-      }
     };
 
     const interval = setInterval(checkMissed, 60000);
@@ -206,7 +219,7 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, [medications, user]);
+  }, [user, setMedications]);
 
   const handleRefill = async (e, med) => {
     if (e) {

@@ -23,11 +23,21 @@ const Settings = lazy(() => import('./pages/Settings'));
 const MedicationHistory = lazy(() => import('./pages/MedicationHistory'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 function App() {
+  const getDeletedIds = () => {
+    try {
+      const saved = localStorage.getItem('deleted_medication_ids');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
   const [medications, setMedications] = useState(() => {
     try {
       const saved = localStorage.getItem('medications');
       const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed.filter(m => m && typeof m === 'object' && m.id) : [];
+      const deleted = getDeletedIds();
+      return Array.isArray(parsed) ? parsed.filter(m => m && typeof m === 'object' && m.id && !deleted.includes(m.id)) : [];
     } catch (e) {
       return [];
     }
@@ -37,7 +47,7 @@ function App() {
     try {
       const saved = localStorage.getItem('dose_logs');
       const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed.filter(l => l && typeof l === 'object' && l.id) : [];
+      return Array.isArray(parsed) ? parsed.filter(l => l && typeof l === 'object' && (l.id || l.medicationId || l.medId)) : [];
     } catch (e) {
       return [];
     }
