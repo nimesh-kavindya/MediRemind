@@ -1,75 +1,82 @@
 import { parse, isAfter, isBefore, format, addDays, parseISO } from 'date-fns';
 
-export const calculateNextReminder = (medications = []) => {
+export const parseTimeToMinutes = (timeStr) => {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const cleaned = timeStr.trim().toUpperCase();
+  const isPM = cleaned.includes('PM');
+  const isAM = cleaned.includes('AM');
+  const numericPart = cleaned.replace(/[^\d:]/g, '');
+  const parts = numericPart.split(':');
+  let hours = parseInt(parts[0], 10);
+  let minutes = parseInt(parts[1], 10) || 0;
+  if (isNaN(hours)) return null;
+
+  if (isPM && hours < 12) {
+    hours += 12;
+  } else if (isAM && hours === 12) {
+    hours = 0;
+  }
+  return hours * 60 + minutes;
+};
+
+export const calculateNextReminder = (medications = [], doseLogs = []) => {
   const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const todayStr = now.toISOString().split('T')[0];
   const safeMeds = Array.isArray(medications) ? medications.filter(Boolean) : [];
-  
-  // Sort medications by their next upcoming reminder time for today
-  const upcomingMeds = [];
-  safeMeds
-    .filter(m => m && !m.taken)
-    .filter(m => m && m.reminderTime)
-    .forEach(m => {
-      const times = Array.isArray(m.reminderTime) ? m.reminderTime : [m.reminderTime].filter(Boolean);
-      times.forEach(timeStr => {
-        try {
-          const reminderDate = parse(timeStr, 'HH:mm', now);
-          upcomingMeds.push({
-            ...m,
-            reminderTime: timeStr, // track the active time
-            reminderDate
-          });
-        } catch (e) {
-          // ignore invalid times
-        }
+  const safeLogs = Array.isArray(doseLogs) ? doseLogs.filter(Boolean) : [];
+
+  const isTaken = (med) => {
+    if (med.taken || med.status === 'TAKEN' || med.status === 'completed') return true;
+    return safeLogs.some(l => 
+      (l.medicationId === med.id || l.medId === med.id || l.medicationName?.toLowerCase() === med.name?.toLowerCase()) &&
+      (l.dateStr === todayStr || l.date === todayStr || (l.timestamp && l.timestamp.startsWith(todayStr))) &&
+      (l.status?.toLowerCase() === 'taken' || l.status?.toLowerCase() === 'completed')
+    );
+  };
+
+  const candidateReminders = [];
+  safeMeds.forEach(m => {
+    if (!m || !m.reminderTime) return;
+    if (isTaken(m)) return;
+    const times = Array.isArray(m.reminderTime) ? m.reminderTime : [m.reminderTime].filter(Boolean);
+    times.forEach(timeStr => {
+      const schedMins = parseTimeToMinutes(timeStr);
+      if (schedMins === null) return;
+
+      candidateReminders.push({
+        medication: m,
+        time: timeStr,
+        schedMins
       });
     });
+  });
 
-  const activeUpcoming = upcomingMeds
-    .filter(m => isAfter(m.reminderDate, now))
-    .sort((a, b) => a.reminderDate.getTime() - b.reminderDate.getTime());
+  // 1. Check for Upcoming (schedMins >= currentMinutes)
+  const upcoming = candidateReminders
+    .filter(r => r.schedMins >= currentMinutes)
+    .sort((a, b) => a.schedMins - b.schedMins);
 
-  if (activeUpcoming.length > 0) {
-    const next = activeUpcoming[0];
+  if (upcoming.length > 0) {
     return {
-      medication: next,
-      time: next.reminderTime,
+      medication: upcoming[0].medication,
+      time: upcoming[0].time,
       isMissed: false
     };
   }
-  
-  // Check for missed ones today
-  const missedMeds = [];
-  medications
-    .filter(m => !m.taken && m.reminderTime)
-    .forEach(m => {
-      const times = Array.isArray(m.reminderTime) ? m.reminderTime : [m.reminderTime].filter(Boolean);
-      times.forEach(timeStr => {
-        try {
-          const reminderDate = parse(timeStr, 'HH:mm', now);
-          missedMeds.push({
-            ...m,
-            reminderTime: timeStr,
-            reminderDate
-          });
-        } catch (e) {
-          // ignore
-        }
-      });
-    });
 
-  const activeMissed = missedMeds
-    .filter(m => isBefore(m.reminderDate, now))
-    .sort((a, b) => b.reminderDate.getTime() - a.reminderDate.getTime()); // Most recently missed first
+  // 2. Check for Missed with 60-minute grace period buffer (currentMinutes > schedMins + 60)
+  const missed = candidateReminders
+    .filter(r => currentMinutes > r.schedMins + 60)
+    .sort((a, b) => b.schedMins - a.schedMins);
 
-  if (activeMissed.length > 0) {
-    const lastMissed = activeMissed[0];
+  if (missed.length > 0) {
     return {
-      medication: lastMissed,
-      time: lastMissed.reminderTime,
+      medication: missed[0].medication,
+      time: missed[0].time,
       isMissed: true
     };
   }
 
-  return null; // All caught up!
+  return null;
 };

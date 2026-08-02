@@ -163,7 +163,7 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
         let updated = false;
 
         const updatedMeds = prevMeds.map(med => {
-          if (!med || med.taken || med.isMissedMarked) return med;
+          if (!med || med.taken || med.isMissedMarked || isInstanceTaken(med)) return med;
           const medDate = med.scheduledDate || med.startDate || (med.createdAt ? String(med.createdAt).split('T')[0] : '');
           if (medDate !== todayStr) return med;
           if (!med.reminderTime) return med;
@@ -173,8 +173,8 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
           const schedMinutes = parseTimeToMinutes(timeStr);
           if (schedMinutes === null) return med;
 
-          // 2-hour (120 minutes) grace period before marking missed
-          const deadlineMinutes = schedMinutes + 120;
+          // Strict 60-minute grace period buffer after scheduled time before flagging missed
+          const deadlineMinutes = schedMinutes + 60;
           
           if (currentMinutes > deadlineMinutes) {
             updated = true;
@@ -367,7 +367,7 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
   };
 
   const { totalMeds, takenMeds, pendingMeds, adherence, typeChartData, weeklyData, currentStreak, longestStreak } = calculateAdherenceStats(medications || [], doseLogs || []);
-  const nextReminder = calculateNextReminder(medications || []);
+  const nextReminder = calculateNextReminder(medications || [], doseLogs || []);
 
   const safeMeds = Array.isArray(medications) ? medications : [];
   const lowSupplyMeds = safeMeds.filter(m => {

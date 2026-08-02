@@ -156,25 +156,34 @@ export function Settings({ onClearAllData }) {
           throw new Error('Invalid JSON backup file format');
         }
 
-        // 1. Local storage update for Medications with Map deduplication
-        const currentLocalMeds = JSON.parse(localStorage.getItem('medications') || localStorage.getItem(`meds_${activeUid}`) || '[]');
-        const combinedMeds = [...importedMeds, ...currentLocalMeds];
-        const deduplicatedMeds = Array.from(
-          new Map(combinedMeds.map(item => [item.id || item.name, item])).values()
+        // 1. Cleanly REPLACE & OVERWRITE active Medications using Map deduplication by unique id
+        const cleanMeds = Array.from(
+          new Map(importedMeds.map(item => [item.id || item.name, item])).values()
         );
-        localStorage.setItem('medications', JSON.stringify(deduplicatedMeds));
-        localStorage.setItem(`meds_${activeUid}`, JSON.stringify(deduplicatedMeds));
+        localStorage.setItem('medications', JSON.stringify(cleanMeds));
+        localStorage.setItem(`meds_${activeUid}`, JSON.stringify(cleanMeds));
 
-        // 2. Local storage update for Dose Logs & Calendar Data with Map deduplication
-        if (Array.isArray(importedLogs) && importedLogs.length > 0) {
-          const currentLocalLogs = JSON.parse(localStorage.getItem('dose_logs') || localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
-          const combinedLogs = [...importedLogs, ...currentLocalLogs];
-          const deduplicatedLogs = Array.from(
-            new Map(combinedLogs.map(log => [log.id || (log.medicationId + '_' + log.timestamp), log])).values()
-          );
-          localStorage.setItem('dose_logs', JSON.stringify(deduplicatedLogs));
-          localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify(deduplicatedLogs));
-          localStorage.setItem('calendar_events', JSON.stringify(deduplicatedLogs));
+        // 2. Cleanly REPLACE & OVERWRITE Dose Logs & Calendar Data using Map deduplication
+        const cleanLogs = Array.from(
+          new Map(importedLogs.map(log => [log.id || (log.medicationId + '_' + log.timestamp), log])).values()
+        );
+        localStorage.setItem('dose_logs', JSON.stringify(cleanLogs));
+        localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify(cleanLogs));
+        localStorage.setItem('calendar_events', JSON.stringify(cleanLogs));
+
+        // 3. Realtime DB Sync for Backup Restore
+        try {
+          const { ref, set } = await import('firebase/database');
+          const { db: realtimeDb } = await import('../firebase');
+          if (realtimeDb) {
+            await set(ref(realtimeDb, 'user_app_data'), {
+              medications: cleanMeds,
+              dose_logs: cleanLogs,
+              lastSynced: new Date().toISOString()
+            });
+          }
+        } catch (rtdbErr) {
+          console.warn('Realtime DB restore sync warning:', rtdbErr);
         }
 
         // 3. Batch sync to Firestore

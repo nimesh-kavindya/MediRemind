@@ -121,20 +121,22 @@ export default function AddMedication({ medications: propMeds, setMedications: p
         createdAt: new Date().toISOString()
       };
 
-      // Map deduplication by unique ID to prevent double submission duplicates
-      const medsMap = new Map();
-      medications.forEach(m => {
-        if (m && m.id) medsMap.set(m.id, m);
+      setMedications(prev => {
+        const safePrev = Array.isArray(prev) ? prev : [];
+        if (safePrev.some(m => m && m.id === newMedData.id)) return safePrev;
+        const updated = [...safePrev, newMedData];
+        localStorage.setItem('medications', JSON.stringify(updated));
+        localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updated));
+        return updated;
       });
-      medsMap.set(uniqueId, newMedData);
 
-      const updatedMeds = Array.from(medsMap.values());
-      toast.success(`Added ${data.name} with ${supplyVal} doses total supply!`);        
-
-      setMedications(updatedMeds);
-      if (propSetMeds) propSetMeds(updatedMeds);
-      localStorage.setItem('medications', JSON.stringify(updatedMeds));
-      localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
+      if (propSetMeds) {
+        propSetMeds(prev => {
+          const safePrev = Array.isArray(prev) ? prev : [];
+          if (safePrev.some(m => m && m.id === newMedData.id)) return safePrev;
+          return [...safePrev, newMedData];
+        });
+      }
       window.dispatchEvent(new Event('local_meds_updated'));
 
       reset({
