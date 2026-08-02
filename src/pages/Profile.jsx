@@ -50,7 +50,7 @@ export default function Profile() {
       const dataUrl = event.target?.result;
       if (dataUrl) {
         setPhotoURL(dataUrl);
-        toast.success('Photo uploaded! Click "Save Profile" to apply.');
+        updateUserProfile({ photoURL: dataUrl }).then(() => toast.success('Photo updated successfully!'));
       }
     };
     reader.readAsDataURL(file);
@@ -62,7 +62,7 @@ export default function Profile() {
       e.stopPropagation();
     }
     setPhotoURL('');
-    toast.success('Photo removed');
+    updateUserProfile({ photoURL: '' }).then(() => toast.success('Photo removed'));
   };
 
   const handleLinkGooglePhoto = (e) => {
@@ -73,24 +73,7 @@ export default function Profile() {
     const name = displayName || user?.name || 'User';
     const googleAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=0d9488&color=fff&size=256&bold=true`;
     setPhotoURL(googleAvatar);
-    toast.success('Google profile picture linked successfully!');
-  };
-
-  const handleUpdate = async (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    setLoading(true);
-    try {
-      await updateUserProfile({ displayName, photoURL });
-      toast.success('Profile updated successfully! 🎉');
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to update profile');
-    } finally {
-      setLoading(false);
-    }
+    updateUserProfile({ photoURL: googleAvatar }).then(() => toast.success('Google profile picture linked successfully!'));
   };
 
 
@@ -164,47 +147,32 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Form Section */}
-          <form onSubmit={handleUpdate} className="flex-1 space-y-4 w-full">
-            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          {/* Read-Only Details Section */}
+          <div className="flex-1 flex flex-col justify-center space-y-4 w-full py-4">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2 mb-2 border-b border-slate-100 dark:border-slate-800/80 pb-3">
               <User size={18} className="text-teal-600 dark:text-teal-400" /> Account Details
             </h3>
 
-            <Input
-              label="Full Name"
-              icon={User}
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Your full name"
-              required
-            />
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                {user?.name || user?.displayName || 'User'}
+              </h2>
+              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1.5">
+                <Mail size={15} className="text-slate-400" /> {user?.email || 'No email provided'}
+              </p>
+            </div>
 
-            <Input
-              label="Email Address"
-              icon={Mail}
-              value={user?.email || ''}
-              disabled
-              className="opacity-60 cursor-not-allowed bg-slate-50 dark:bg-slate-800/60"
-            />
-
-            <div className="pt-2 flex justify-end gap-3">
+            <div className="pt-6">
               <Button 
                 type="button" 
                 variant="danger" 
                 onClick={logout} 
-                className="px-6 py-2.5 shadow-md flex items-center gap-1.5"
+                className="px-6 py-2.5 shadow-md flex items-center gap-1.5 w-full sm:w-auto justify-center"
               >
                 <LogOut size={16} /> Logout
               </Button>
-              <Button 
-                type="submit" 
-                isLoading={loading} 
-                className="bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-950 font-bold px-6 py-2.5 shadow-md shadow-teal-500/20"
-              >
-                <Save size={16} className="mr-2" /> Save Profile
-              </Button>
             </div>
-          </form>
+          </div>
         </div>
       </Card>
 
