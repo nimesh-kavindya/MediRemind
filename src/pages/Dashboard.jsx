@@ -132,6 +132,82 @@ export default function Dashboard() {
     };
   }, [user]);
 
+  // Auto-Missed Logic (2-Hour Overdue)
+  useEffect(() => {
+    if (!medications.length) return;
+
+    const checkMissed = () => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      let updated = false;
+
+      const updatedMeds = medications.map(med => {
+        if (med.taken || med.isMissedMarked) return med;
+        const medDate = med.scheduledDate || med.startDate || (med.createdAt ? med.createdAt.split('T')[0] : '');
+        if (medDate !== todayStr) return med;
+        if (!med.reminderTime) return med;
+
+        const times = Array.isArray(med.reminderTime) ? med.reminderTime : [med.reminderTime];
+        const timeStr = times[0];
+        if (!timeStr) return med;
+
+        const [hr, min] = timeStr.split(':').map(Number);
+        const schedTime = new Date();
+        schedTime.setHours(hr, min, 0, 0);
+        
+        const deadline = new Date(schedTime.getTime() + 2 * 60 * 60 * 1000);
+        
+        if (now > deadline) {
+          updated = true;
+          const activeUid = user?.uid || 'demo_user';
+          const newLog = {
+            id: `log_${Date.now()}_${med.id}_missed`,
+            medId: med.id,
+            medName: med.name,
+            dosage: med.dosage,
+            type: med.type,
+            category: med.category || 'Daily',
+            scheduledTime: timeStr,
+            status: 'missed',
+            notes: 'Auto-marked as missed (2 hours overdue)',
+            dateStr: todayStr,
+            timestamp: now.toISOString(),
+            createdAt: now.toISOString()
+          };
+          
+          try {
+            const existingRaw = localStorage.getItem('dose_logs') || safeGetItem(`dose_logs_${activeUid}`, '[]');
+            const existingLogs = JSON.parse(existingRaw);
+            const updatedLogs = [newLog, ...existingLogs];
+            localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
+            safeSetItem(`dose_logs_${activeUid}`, JSON.stringify(updatedLogs));
+            window.dispatchEvent(new Event('dose_logs_updated'));
+          } catch (e) {
+            console.warn('Failed to append missed log:', e);
+          }
+
+          return { ...med, isMissedMarked: true };
+        }
+        return med;
+      });
+
+      if (updated) {
+        setMedications(updatedMeds);
+        const activeUid = user?.uid || 'demo_user';
+        localStorage.setItem('medications', JSON.stringify(updatedMeds));
+        safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
+      }
+    };
+
+    const interval = setInterval(checkMissed, 60000);
+    const timeout = setTimeout(checkMissed, 1000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [medications, user]);
+
   const handleRefill = async (e, med) => {
     if (e) {
       e.preventDefault();
@@ -486,7 +562,9 @@ export default function Dashboard() {
         ) : (
           <div className="space-y-3">
             <AnimatePresence mode="popLayout">
-              {(Array.isArray(filteredMeds) ? filteredMeds : []).map((med) => (
+              {(Array.isArray(filteredMeds) ? filteredMeds : []).map((med) => {
+                const isMissed = med.isMissedMarked && !med.taken;
+                return (
                 <motion.div 
                   key={med.id}
                   layout
@@ -494,11 +572,11 @@ export default function Dashboard() {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -10, scale: 0.96 }}
                   transition={{ duration: 0.25, ease: 'easeOut' }}
-                  className="flex items-center justify-between p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800/80 transition-colors shadow-xs"
+                  className={`flex items-center justify-between p-3.5 sm:p-4 rounded-xl border transition-colors shadow-xs ${isMissed ? 'border-red-500/50 bg-red-50/50 dark:bg-red-900/20 hover:bg-red-50 dark:hover:bg-red-900/30' : 'border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800/80'}`}
                 >
                   <div className="flex items-center gap-3 sm:gap-4">
-                    <button onClick={(e) => toggleTakenStatus(e, med)} className="shrink-0 transition-transform active:scale-90">
-                      {med.taken ? <CheckCircle2 size={26} className="text-emerald-500 fill-emerald-500/20" /> : <Circle size={26} className="text-slate-400 hover:text-teal-500" />}
+                    <button disabled={isMissed} onClick={(e) => toggleTakenStatus(e, med)} className={`shrink-0 transition-transform ${isMissed ? 'opacity-50 cursor-not-allowed' : 'active:scale-90'}`}>
+                      {med.taken ? <CheckCircle2 size={26} className="text-emerald-500 fill-emerald-500/20" /> : <Circle size={26} className={`${isMissed ? 'text-red-400' : 'text-slate-400 hover:text-teal-500'}`} />}
                     </button>
                     <div className="min-w-0 flex-1">
                       <h4 className={`font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2 flex-wrap ${med.taken ? 'line-through text-slate-400 dark:text-slate-500' : ''}`}>
@@ -524,8 +602,8 @@ export default function Dashboard() {
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0 ml-2">
-                    <span className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${med.taken ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
-                      {med.taken ? 'Done' : 'Pending'}
+                    <span className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${isMissed ? 'bg-red-500/10 text-red-600 dark:text-red-400' : (med.taken ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400')}`}>
+                      {isMissed ? 'Missed' : (med.taken ? 'Done' : 'Pending')}
                     </span>
                     <button
                       onClick={(e) => handleDelete(e, med.id, med.name)}
@@ -536,7 +614,7 @@ export default function Dashboard() {
                     </button>
                   </div>
                 </motion.div>
-              ))}
+              )})}
             </AnimatePresence>
           </div>
         )}

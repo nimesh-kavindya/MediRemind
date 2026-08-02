@@ -2,13 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   History, CheckCircle2, XCircle, AlertCircle, Calendar as CalendarIcon, 
-  Filter, Search, Plus, Download, Trash2, Flame, Award, TrendingUp, 
-  Clock, Pill, FileText, ArrowUpRight, Sparkles, RefreshCw
+  Search, Plus, Download, Trash2, Clock, Pill, FileText 
 } from 'lucide-react';
-import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  BarChart, Bar, Legend, Cell 
-} from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -21,18 +16,15 @@ import Loader from '../components/Loader';
 
 import { 
   getDoseLogs, 
-  logDoseEvent, 
   logBatchDoseEvents,
-  deleteDoseLog, 
-  calculate30DayAdherence,
-  clearAllDoseLogs
+  deleteDoseLog
 } from '../services/historyService';
 
 export default function MedicationHistory() {
   const { user } = useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState('30'); // '7', '14', '30'
+  const [selectedMonth, setSelectedMonth] = useState('all');
   const [selectedMed, setSelectedMed] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -91,14 +83,31 @@ export default function MedicationHistory() {
     return Array.from(categories);
   }, [logs]);
 
-  // Analytics calculation based on selected time range
-  const analytics = useMemo(() => {
-    return calculate30DayAdherence(logs, parseInt(timeRange, 10));
-  }, [logs, timeRange]);
+  // Unique list of months for filter dropdown
+  const monthOptions = useMemo(() => {
+    const safeLogs = Array.isArray(logs) ? logs : [];
+    const months = new Set();
+    safeLogs.forEach(l => {
+      if (l && (l.dateStr || l.timestamp || l.createdAt)) {
+        const dateObj = new Date(l.dateStr || l.timestamp || l.createdAt);
+        if (!isNaN(dateObj.getTime())) {
+          // e.g. "August 2026"
+          const monthYear = dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+          months.add(monthYear);
+        }
+      }
+    });
+    // Sort months descending (very basic sort assuming string works or we can just parse)
+    return Array.from(months).sort((a, b) => new Date(b) - new Date(a));
+  }, [logs]);
 
   // Filtered logs for the table/timeline list
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
+      const logDateObj = log.dateStr ? new Date(log.dateStr) : new Date(log.timestamp || log.createdAt);
+      const logMonthYear = !isNaN(logDateObj.getTime()) ? logDateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+
+      const matchesMonth = selectedMonth === 'all' || logMonthYear === selectedMonth;
       const matchesSearch = 
         log.medName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         log.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -109,9 +118,9 @@ export default function MedicationHistory() {
       const matchesCategory = selectedCategory === 'all' || (log.category || 'Daily') === selectedCategory;
       const matchesStatus = selectedStatus === 'all' || log.status === selectedStatus;
 
-      return matchesSearch && matchesMed && matchesCategory && matchesStatus;
+      return matchesMonth && matchesSearch && matchesMed && matchesCategory && matchesStatus;
     });
-  }, [logs, searchTerm, selectedMed, selectedCategory, selectedStatus]);
+  }, [logs, searchTerm, selectedMed, selectedCategory, selectedStatus, selectedMonth]);
 
   const handleDeleteLog = async (e, logId) => {
     if (e) {
@@ -181,7 +190,7 @@ export default function MedicationHistory() {
     }
   };
 
-  const handleExportCSV = (e) => {
+  const handleExportPDF = (e) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -190,284 +199,56 @@ export default function MedicationHistory() {
       toast.error('No logs available to export');
       return;
     }
-    const headers = ['Date', 'Time', 'Medication', 'Dosage', 'Status', 'Notes'];
-    const csvRows = [
-      headers.join(','),
-      ...filteredLogs.map(l => [
-        `"${l.dateStr || ''}"`,
-        `"${l.scheduledTime || ''}"`,
-        `"${l.medName || ''}"`,
-        `"${l.dosage || ''}"`,
-        `"${l.status || ''}"`,
-        `"${(l.notes || '').replace(/"/g, '""')}"`
-      ].join(','))
-    ];
-
-    try {
-      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `MediRemind_Adherence_History_${new Date().toISOString().split('T')[0]}.csv`;
-      a.click();
-      toast.success('Exported Medication History as CSV!');
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to export CSV');
-    }
+    window.print();
+    toast.success('Preparing PDF export...');
   };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-12">
-      <PageHeader 
-        title="Medication History & Adherence" 
-        subtitle="Track every completed dose and view your 30-day health trends."
-      />
-
-      {/* Top Banner & Quick Controls */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gradient-to-r from-teal-500/10 via-slate-50 to-emerald-500/10 dark:from-slate-900 dark:via-slate-800 dark:to-teal-950 p-4 sm:p-5 rounded-2xl border border-teal-500/30 text-slate-900 dark:text-white shadow-sm dark:shadow-xl transition-all">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/30 flex items-center justify-center shrink-0">
-            <History size={24} />
-          </div>
-          <div>
-            <h3 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white flex items-center gap-2">
-              Dose History & Adherence Log
-              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/30">
-                {timeRange}-Day Window
-              </span>
-            </h3>
-            <p className="text-xs text-slate-600 dark:text-slate-300">
-              Total {analytics.totalDoses} doses scheduled in past {timeRange} days
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          <button
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowLogModal(true); }}
-            className="px-3.5 py-2 rounded-xl bg-teal-600 dark:bg-teal-500 hover:bg-teal-700 dark:hover:bg-teal-400 text-white dark:text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-500/20 active:scale-95 transition-all"
-          >
-            <Plus size={16} /> Log Manual Dose
-          </button>
-
-          <button
-            onClick={(e) => handleExportCSV(e)}
-            className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-            title="Export CSV Report"
-          >
-            <Download size={15} /> Export CSV
-          </button>
-        </div>
+      <style>
+        {`
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+            .print-area, .print-area * {
+              visibility: visible;
+            }
+            .print-area {
+              position: absolute;
+              left: 0;
+              top: 0;
+              width: 100%;
+            }
+            .no-print {
+              display: none !important;
+            }
+            /* Hide the PageHeader since it might be outside print-area or too complex */
+            .print-header {
+              display: block !important;
+              text-align: center;
+              margin-bottom: 20px;
+            }
+          }
+          .print-header { display: none; }
+        `}
+      </style>
+      <div className="no-print">
+        <PageHeader 
+          title="Medication History & Adherence" 
+          subtitle="Track every completed dose and view your history logs."
+        />
       </div>
 
-      {/* KPI Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Adherence Rate */}
-        <Card className="p-4 sm:p-5 bg-gradient-to-br from-teal-500/10 via-emerald-500/5 to-transparent border-teal-500/20">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Adherence Rate</span>
-            <div className="p-2 rounded-xl bg-teal-500/20 text-teal-600 dark:text-teal-400">
-              <TrendingUp size={18} />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-              {analytics.overallAdherence}%
-            </span>
-            <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">
-              {analytics.overallAdherence >= 80 ? 'Optimal' : (analytics.overallAdherence >= 50 ? 'Fair' : 'Needs Focus')}
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Past {timeRange} days performance
-          </p>
-        </Card>
-
-        {/* Doses Taken */}
-        <Card className="p-4 sm:p-5 bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border-emerald-500/20">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Doses Completed</span>
-            <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 size={18} />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-              {analytics.takenCount}
-            </span>
-            <span className="text-xs font-semibold text-slate-400">
-              / {analytics.totalDoses} doses
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Successfully taken on schedule
-          </p>
-        </Card>
-
-        {/* Missed / Skipped */}
-        <Card className="p-4 sm:p-5 bg-gradient-to-br from-amber-500/10 via-rose-500/5 to-transparent border-amber-500/20">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Missed / Skipped</span>
-            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400">
-              <AlertCircle size={18} />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-              {analytics.missedCount + analytics.skippedCount}
-            </span>
-            <span className="text-xs font-semibold text-rose-500 dark:text-rose-400">
-              ({analytics.missedCount} missed, {analytics.skippedCount} skipped)
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Doses not marked taken
-          </p>
-        </Card>
-
-        {/* Adherence Streak */}
-        <Card className="p-4 sm:p-5 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-transparent border-cyan-500/20">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Current Streak</span>
-            <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-600 dark:text-cyan-400">
-              <Flame size={18} />
-            </div>
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-              {analytics.currentStreak} Days
-            </span>
-            <span className="text-xs text-cyan-600 dark:text-cyan-400 font-bold">
-              🔥 Active
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-            Consecutive 100% adherence days
-          </p>
-        </Card>
-      </div>
-
-      {/* Adherence Trend Interactive Area Chart */}
-      <Card>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
-          <div>
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <TrendingUp size={20} className="text-teal-500" /> Adherence Trend Over Time
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Daily percentage of scheduled doses successfully taken
-            </p>
-          </div>
-
-          <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700/80 self-end sm:self-auto">
-            {['7', '14', '30'].map(range => (
-              <button
-                key={range}
-                onClick={() => setTimeRange(range)}
-                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
-                  timeRange === range
-                    ? 'bg-teal-500 text-slate-950 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                {range} Days
-              </button>
-            ))}
-          </div>
+      <div className="print-area">
+        <div className="print-header">
+          <h2>Dose History Report</h2>
+          <p>Generated on: {new Date().toLocaleDateString()}</p>
         </div>
-
-        <div className="h-64 sm:h-72 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={analytics.dailyTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="adherenceGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor="#14b8a6" stopOpacity={0.0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.15} />
-              <XAxis 
-                dataKey="date" 
-                tick={{ fontSize: 11, fill: '#64748b' }} 
-                axisLine={false} 
-                tickLine={false} 
-              />
-              <YAxis 
-                domain={[0, 100]} 
-                tick={{ fontSize: 11, fill: '#64748b' }} 
-                axisLine={false} 
-                tickLine={false}
-                unit="%"
-              />
-              <Tooltip 
-                content={({ active, payload, label }) => {
-                  if (active && payload && payload.length) {
-                    const data = payload[0].payload;
-                    return (
-                      <div className="bg-slate-900/95 text-white p-3 rounded-xl shadow-xl border border-teal-500/30 text-xs space-y-1">
-                        <p className="font-bold text-teal-400">{label} ({data.dateStr})</p>
-                        <p className="font-extrabold text-sm text-white">Adherence: {data.adherence}%</p>
-                        <p className="text-[11px] text-emerald-300">✓ Taken: {data.taken} doses</p>
-                        <p className="text-[11px] text-amber-300">✗ Missed: {data.missed} doses</p>
-                        {data.skipped > 0 && <p className="text-[11px] text-cyan-300">⏭ Skipped: {data.skipped} doses</p>}
-                      </div>
-                    );
-                  }
-                  return null;
-                }}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="adherence" 
-                stroke="#14b8a6" 
-                strokeWidth={3} 
-                fillOpacity={1} 
-                fill="url(#adherenceGradient)" 
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
-
-      {/* Medication Compliance Breakdown */}
-      {analytics && Array.isArray(analytics.medicationCompliance) && analytics.medicationCompliance.length > 0 && (
-        <Card>
-          <h3 className="text-base font-bold mb-3 text-slate-900 dark:text-white flex items-center gap-2">
-            <Pill size={18} className="text-emerald-500" /> Compliance By Medication
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {analytics.medicationCompliance.map((med) => (
-              <div 
-                key={med.name} 
-                className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex flex-col justify-between"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-sm text-slate-900 dark:text-white">{med.name}</span>
-                  <span className={`text-xs font-black px-2 py-0.5 rounded-md ${
-                    med.rate >= 80 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                  }`}>
-                    {med.rate}%
-                  </span>
-                </div>
-                <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden mb-1.5">
-                  <div 
-                    className="bg-gradient-to-r from-teal-500 to-emerald-500 h-full rounded-full transition-all duration-500"
-                    style={{ width: `${med.rate}%` }}
-                  ></div>
-                </div>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {med.taken} of {med.total} doses logged taken
-                </span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
 
       {/* Filters & Log History Table */}
       <Card>
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 mb-5">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 mb-5 no-print">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <FileText size={19} className="text-teal-500" /> Detailed Dose History Records
@@ -477,30 +258,46 @@ export default function MedicationHistory() {
             </p>
           </div>
 
-          {logs.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 self-end md:self-auto">
             <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (window.confirm("Are you sure you want to clear all data?")) {
-                  localStorage.clear();
-                  localStorage.removeItem('medications');
-                  localStorage.removeItem('dose_logs');
-                  try { setMedications([]); } catch (e) {}
-                  try { setLogs([]); } catch (e) {}
-                  window.location.reload(); // Hard force refresh to instantly reflect wiped state
-                }
-              }}
-              className="text-xs font-semibold text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 flex items-center gap-1 self-end md:self-auto transition-colors"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowLogModal(true); }}
+              className="px-3.5 py-2 rounded-xl bg-teal-600 dark:bg-teal-500 hover:bg-teal-700 dark:hover:bg-teal-400 text-white dark:text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-500/20 active:scale-95 transition-all"
             >
-              <Trash2 size={13} /> Clear All Data
+              <Plus size={16} /> Log Manual Dose
             </button>
-          )}
+
+            <button
+              onClick={(e) => handleExportPDF(e)}
+              className="px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+              title="Export PDF Report"
+            >
+              <Download size={15} /> Export PDF
+            </button>
+
+            {logs.length > 0 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (window.confirm("Are you sure you want to clear all data?")) {
+                    localStorage.clear();
+                    localStorage.removeItem('medications');
+                    localStorage.removeItem('dose_logs');
+                    try { setLogs([]); } catch (e) {}
+                    window.location.reload(); 
+                  }
+                }}
+                className="px-3 py-2 text-xs font-semibold text-rose-500 hover:text-rose-600 dark:text-rose-400 dark:hover:text-rose-300 flex items-center gap-1 transition-colors"
+              >
+                <Trash2 size={15} /> Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filter Controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-4 no-print">
           {/* Search Input */}
           <Input
             icon={Search}
@@ -508,6 +305,20 @@ export default function MedicationHistory() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+
+          {/* Month Filter */}
+          <div>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800 px-3.5 py-2.5 text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none"
+            >
+              <option value="all">All Months</option>
+              {(Array.isArray(monthOptions) ? monthOptions : []).map(month => (
+                <option key={month} value={month}>{month}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Medication Filter */}
           <div>
@@ -639,6 +450,7 @@ export default function MedicationHistory() {
           </div>
         )}
       </Card>
+      </div>
 
       {/* Manual Log Modal */}
       <AnimatePresence>
