@@ -19,7 +19,7 @@ import { generateMedicationReportPDF } from '../services/pdfReportService';
 import Papa from 'papaparse';
 import toast from 'react-hot-toast';
 
-export default function Settings() {
+export default function Settings({ onClearAllData }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
@@ -360,13 +360,20 @@ export default function Settings() {
           className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 shadow-md flex items-center justify-center gap-2"
           onClick={() => {
             if (window.confirm("Are you sure you want to clear all medications and logs? This cannot be undone.")) {
-              localStorage.clear();
-              window.dispatchEvent(new Event('local_meds_updated'));
-              window.dispatchEvent(new Event('dose_logs_updated'));
-              toast.success("All app data cleared successfully");
-              setTimeout(() => {
-                window.location.reload();
-              }, 300);
+              if (onClearAllData) {
+                onClearAllData();
+              } else {
+                localStorage.clear();
+                localStorage.removeItem('medications');
+                localStorage.removeItem('dose_logs');
+                localStorage.removeItem('medi_counts_backup');
+                window.dispatchEvent(new Event('local_meds_updated'));
+                window.dispatchEvent(new Event('dose_logs_updated'));
+                toast.success("All app data cleared successfully");
+                setTimeout(() => {
+                  window.location.reload();
+                }, 300);
+              }
             }
           }}
         >

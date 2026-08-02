@@ -28,7 +28,7 @@ import { logDoseEvent, getDoseLogs } from '../services/historyService';
 // Charts
 import { LineChart, Line, XAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
-export default function Dashboard({ medications, setMedications, doseLogs, setDoseLogs }) {
+export default function Dashboard({ medications, setMedications, doseLogs, setDoseLogs, onDeleteMedication }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -61,20 +61,13 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     let unsubscribe = () => {};
 
     const loadLocalMeds = () => {
-      const savedRaw = localStorage.getItem('medications') || safeGetItem(`meds_${user.uid}`, null);
-      if (savedRaw === null || savedRaw === '[]') {
-        // First initialization for new user - start cleanly empty
-        localStorage.setItem('medications', '[]');
-        safeSetItem(`meds_${user.uid}`, '[]');
+      const savedRaw = localStorage.getItem('medications');
+      if (savedRaw === null) {
         setMedications([]);
       } else {
         try {
-          const deletedRaw = localStorage.getItem('deleted_medication_ids') || '[]';
-          let deletedIds = [];
-          try { deletedIds = JSON.parse(deletedRaw); } catch(e) {}
-
           const saved = JSON.parse(savedRaw);
-          let meds = Array.isArray(saved) ? saved.filter(m => m && m.id && !deletedIds.includes(m.id)) : [];
+          let meds = Array.isArray(saved) ? saved.filter(m => m && m.id) : [];
           
           // Roll over daily medications to the current date and reset 'taken' status
           const todayStr = new Date().toISOString().split('T')[0];
@@ -96,12 +89,12 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
 
           if (updated) {
             localStorage.setItem('medications', JSON.stringify(meds));
-            safeSetItem(`meds_${user.uid}`, JSON.stringify(meds));
           }
           
           setMedications(meds);
         } catch (e) {
           console.error('Failed to parse meds from local storage', e);
+          setMedications([]);
         }
       }
       setLoading(false);

@@ -23,21 +23,14 @@ const Settings = lazy(() => import('./pages/Settings'));
 const MedicationHistory = lazy(() => import('./pages/MedicationHistory'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 function App() {
-  const getDeletedIds = () => {
-    try {
-      const saved = localStorage.getItem('deleted_medication_ids');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  };
-
   const [medications, setMedications] = useState(() => {
     try {
       const saved = localStorage.getItem('medications');
-      const parsed = saved ? JSON.parse(saved) : [];
-      const deleted = getDeletedIds();
-      return Array.isArray(parsed) ? parsed.filter(m => m && typeof m === 'object' && m.id && !deleted.includes(m.id)) : [];
+      if (saved !== null) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.filter(m => m && typeof m === 'object' && m.id) : [];
+      }
+      return [];
     } catch (e) {
       return [];
     }
@@ -46,12 +39,39 @@ function App() {
   const [logs, setLogs] = useState(() => {
     try {
       const saved = localStorage.getItem('dose_logs');
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed.filter(l => l && typeof l === 'object' && (l.id || l.medicationId || l.medId)) : [];
+      if (saved !== null) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed.filter(l => l && typeof l === 'object' && (l.id || l.medicationId || l.medId)) : [];
+      }
+      return [];
     } catch (e) {
       return [];
     }
   });
+
+  // Centralized Master Deletion Handler
+  const handleDeleteMedication = (id) => {
+    setMedications(prevMeds => {
+      const updated = prevMeds.filter(m => m.id !== id);
+      localStorage.setItem('medications', JSON.stringify(updated));
+      return updated;
+    });
+    localStorage.removeItem('medi_counts_backup');
+    window.dispatchEvent(new Event('local_meds_updated'));
+  };
+
+  // Centralized Hard Reset / Clear All Data
+  const handleClearAllData = () => {
+    localStorage.clear();
+    localStorage.removeItem('medications');
+    localStorage.removeItem('dose_logs');
+    localStorage.removeItem('medi_counts_backup');
+    setMedications([]);
+    setLogs([]);
+    window.dispatchEvent(new Event('local_meds_updated'));
+    window.dispatchEvent(new Event('dose_logs_updated'));
+    window.location.reload();
+  };
   return (
     <ErrorBoundary>
       <NotificationProvider>
@@ -69,14 +89,14 @@ function App() {
 
               {/* Protected Routes */}
               <Route element={<ProtectedLayout />}>
-                <Route path="/dashboard" element={<Dashboard medications={medications} setMedications={setMedications} doseLogs={logs} setDoseLogs={setLogs} />} />
-                <Route path="/add-medication" element={<AddMedication medications={medications} setMedications={setMedications} setLogs={setLogs} />} />
+                <Route path="/dashboard" element={<Dashboard medications={medications} setMedications={setMedications} doseLogs={logs} setDoseLogs={setLogs} onDeleteMedication={handleDeleteMedication} />} />
+                <Route path="/add-medication" element={<AddMedication medications={medications} setMedications={setMedications} setLogs={setLogs} onDeleteMedication={handleDeleteMedication} />} />
                 <Route path="/scanner" element={<Scanner />} />
                 <Route path="/calendar" element={<Calendar />} />
                 <Route path="/history" element={<MedicationHistory logs={logs} setLogs={setLogs} />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/health-tips" element={<HealthTips />} />
-                <Route path="/settings" element={<Settings />} />
+                <Route path="/settings" element={<Settings onClearAllData={handleClearAllData} />} />
               </Route>
 
               {/* Catch all */}

@@ -15,7 +15,7 @@ import Card from '../components/Card';
 import Input from '../components/Input';
 import Button from '../components/Button';
 
-export default function AddMedication({ medications, setMedications, setLogs }) {
+export default function AddMedication({ medications, setMedications, setLogs, onDeleteMedication }) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -124,24 +124,22 @@ export default function AddMedication({ medications, setMedications, setLogs }) 
 
   const loadMedications = () => {
     try {
-      const activeUid = user?.uid || 'demo_user';
-      const deletedRaw = localStorage.getItem('deleted_medication_ids') || '[]';
-      let deletedIds = [];
-      try { deletedIds = JSON.parse(deletedRaw); } catch(e) {}
-
-      const saved = JSON.parse(localStorage.getItem(`meds_${activeUid}`) || localStorage.getItem('medications') || '[]');
-      const filteredSaved = Array.isArray(saved) ? saved.filter(m => m && m.id && !deletedIds.includes(m.id)) : [];
-      const { merged, modified } = dedupMedicationsList(filteredSaved);
-      if (modified) {
-        try {
-          localStorage.setItem(`meds_${activeUid}`, JSON.stringify(merged));
-          localStorage.setItem('medications', JSON.stringify(merged));
-        } catch (err) {
-          console.warn('Failed to write meds to localStorage in loadMedications:', err);
+      const savedRaw = localStorage.getItem('medications');
+      if (savedRaw !== null) {
+        const saved = JSON.parse(savedRaw);
+        const validSaved = Array.isArray(saved) ? saved.filter(m => m && m.id) : [];
+        const { merged, modified } = dedupMedicationsList(validSaved);
+        if (modified) {
+          try {
+            localStorage.setItem('medications', JSON.stringify(merged));
+          } catch (err) {
+            console.warn('Failed to write meds to localStorage in loadMedications:', err);
+          }
         }
-        window.dispatchEvent(new Event('local_meds_updated'));
+        setMedications(merged);
+      } else {
+        setMedications([]);
       }
-      setMedications(merged);
     } catch (err) {
       console.error('Failed to load medications inside AddMedication:', err);
     }
@@ -315,20 +313,15 @@ export default function AddMedication({ medications, setMedications, setLogs }) 
     }
     if (window.confirm(`Are you sure you want to delete ${medName}? This will update your Dashboard and Dose History.`)) {
       try {
-        const activeUid = user?.uid || 'demo_user';
-        const deletedRaw = localStorage.getItem('deleted_medication_ids') || '[]';
-        let deletedIds = [];
-        try { deletedIds = JSON.parse(deletedRaw); } catch(e) {}
-        if (!deletedIds.includes(medId)) {
-          deletedIds.push(medId);
-          localStorage.setItem('deleted_medication_ids', JSON.stringify(deletedIds));
+        if (onDeleteMedication) {
+          onDeleteMedication(medId);
+        } else {
+          const updatedMeds = medications.filter(m => m && m.id !== medId);
+          setMedications(updatedMeds);
+          localStorage.setItem('medications', JSON.stringify(updatedMeds));
+          localStorage.removeItem('medi_counts_backup');
+          window.dispatchEvent(new Event('local_meds_updated'));
         }
-
-        const updatedMeds = medications.filter(m => m && m.id !== medId);
-        setMedications(updatedMeds);
-        localStorage.setItem('medications', JSON.stringify(updatedMeds));
-        localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
-        window.dispatchEvent(new Event('local_meds_updated'));
         toast.success(`Deleted ${medName}`);
 
         if (user?.uid) {
