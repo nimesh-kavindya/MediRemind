@@ -207,10 +207,6 @@ export default function Settings({ onClearAllData }) {
         console.error('Import error:', err);
         toast.error('Failed to parse or import JSON backup file.');
       }
-    };
-    reader.readAsText(file);
-  };
-
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
