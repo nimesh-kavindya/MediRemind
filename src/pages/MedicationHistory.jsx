@@ -134,16 +134,34 @@ export default function MedicationHistory({ logs = [], setLogs }) {
     }
     if (!window.confirm('Are you sure you want to delete this dose record?')) return;
     try {
-      await deleteDoseLog(user?.uid, logId);
-      const updatedLogs = logs.filter(l => l.id !== logId);
+      const activeUid = user?.uid || 'demo_user';
+      deleteDoseLog(user?.uid, logId).catch(err => console.warn('Firestore delete log warning:', err));
+
+      const updatedLogs = logs.filter(l => l && l.id !== logId);
       setLogs(updatedLogs);
       localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
-      const activeUid = user?.uid || 'demo_user';
       localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify(updatedLogs));
+
+      try {
+        const { ref, set } = await import('firebase/database');
+        const { db: realtimeDb } = await import('../firebase');
+        if (realtimeDb) {
+          const medsRaw = localStorage.getItem('medications');
+          const currentMeds = medsRaw ? JSON.parse(medsRaw) : [];
+          await set(ref(realtimeDb, 'user_app_data'), {
+            medications: Array.isArray(currentMeds) ? currentMeds : [],
+            dose_logs: updatedLogs,
+            lastSynced: new Date().toISOString()
+          });
+        }
+      } catch (rtdbErr) {
+        console.warn('Realtime DB log deletion sync warning:', rtdbErr);
+      }
+
       window.dispatchEvent(new Event('dose_logs_updated'));
       toast.success('Dose record removed');
     } catch (err) {
-      console.error(err);
+      console.error('Delete log failed:', err);
       toast.error('Failed to delete log');
     }
   };

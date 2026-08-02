@@ -86,23 +86,68 @@ export const generateMedicationReportPDF = (userData = {}, medications = []) => 
   doc.setTextColor(...textColor);
   doc.text('Active Medication Schedule', 14, 70);
 
-  const tableData = medications.map((med, index) => {
-    const times = Array.isArray(med.reminderTime) 
-      ? med.reminderTime.join(', ') 
-      : (med.reminderTime || 'Not set');
+  const formatTimeString = (timeStr) => {
+    if (!timeStr || typeof timeStr !== 'string') return '08:00 AM';
+    const cleaned = timeStr.trim();
+    if (cleaned.toUpperCase().includes('AM') || cleaned.toUpperCase().includes('PM')) {
+      return cleaned.toUpperCase();
+    }
+    const parts = cleaned.split(':');
+    let hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10) || 0;
+    if (isNaN(hours)) return '08:00 AM';
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    const strHours = hours < 10 ? `0${hours}` : `${hours}`;
+    const strMins = minutes < 10 ? `0${minutes}` : `${minutes}`;
+    return `${strHours}:${strMins} ${ampm}`;
+  };
+
+  // Deduplicate medications by unique ID or Name
+  const uniqueMedsMap = new Map();
+  medications.forEach(m => {
+    if (!m) return;
+    if (m.id) uniqueMedsMap.set(m.id, m);
+    else if (m.name) uniqueMedsMap.set(m.name, m);
+  });
+  const uniqueMeds = Array.from(uniqueMedsMap.values());
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const logsToUse = Array.isArray(doseLogs) && doseLogs.length > 0
+    ? doseLogs
+    : JSON.parse(localStorage.getItem('dose_logs') || '[]');
+
+  const tableData = uniqueMeds.map((med, index) => {
+    const rawTimes = Array.isArray(med.reminderTime) 
+      ? med.reminderTime 
+      : [med.reminderTime || '08:00'];
+    
+    const formattedTimes = rawTimes.map(t => formatTimeString(t)).join(', ');
 
     const mealTiming = med.mealTiming 
       ? med.mealTiming.replace('_', ' ').toUpperCase() 
       : 'NONE';
+
+    const isTakenInLogs = logsToUse.some(l => {
+      if (!l) return false;
+      const matchesId = (l.medicationId === med.id || l.medId === med.id);
+      const matchesName = (l.medicationName?.toLowerCase() === med.name?.toLowerCase() || l.medName?.toLowerCase() === med.name?.toLowerCase());
+      const isToday = (l.dateStr === todayStr || l.date === todayStr || (l.timestamp && l.timestamp.startsWith(todayStr)));
+      const isTaken = (l.status?.toLowerCase() === 'taken' || l.status?.toLowerCase() === 'completed');
+      return (matchesId || matchesName) && isToday && isTaken;
+    });
+
+    const isTaken = med.taken || med.status?.toLowerCase() === 'taken' || isTakenInLogs;
 
     return [
       (index + 1).toString(),
       med.name || 'Unnamed',
       med.dosage || '-',
       med.frequency || 'Daily',
-      times,
+      formattedTimes,
       mealTiming,
-      med.taken ? 'Taken Today' : 'Pending'
+      isTaken ? 'Taken Today' : 'Pending'
     ];
   });
 

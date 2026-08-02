@@ -43,8 +43,13 @@ export function Settings({ onClearAllData }) {
       e.stopPropagation();
     }
     try {
-      const data = await fetchUserMedications();
-      generateMedicationReportPDF(user, data);
+      const activeUid = user?.uid || 'demo_user';
+      let data = await fetchUserMedications();
+      if (!data || data.length === 0) {
+        data = JSON.parse(localStorage.getItem('medications') || localStorage.getItem(`meds_${activeUid}`) || '[]');
+      }
+      const logs = JSON.parse(localStorage.getItem('dose_logs') || localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
+      generateMedicationReportPDF(user, data, logs);
       toast.success('Professional PDF Report generated!');
     } catch (e) {
       console.error('PDF Generation failed:', e);
@@ -151,19 +156,25 @@ export function Settings({ onClearAllData }) {
           throw new Error('Invalid JSON backup file format');
         }
 
-        // 1. Local storage update for Medications
+        // 1. Local storage update for Medications with Map deduplication
         const currentLocalMeds = JSON.parse(localStorage.getItem('medications') || localStorage.getItem(`meds_${activeUid}`) || '[]');
-        const mergedMeds = [...importedMeds, ...currentLocalMeds.filter(c => !importedMeds.some(i => i.id === c.id))];
-        localStorage.setItem('medications', JSON.stringify(mergedMeds));
-        localStorage.setItem(`meds_${activeUid}`, JSON.stringify(mergedMeds));
+        const combinedMeds = [...importedMeds, ...currentLocalMeds];
+        const deduplicatedMeds = Array.from(
+          new Map(combinedMeds.map(item => [item.id || item.name, item])).values()
+        );
+        localStorage.setItem('medications', JSON.stringify(deduplicatedMeds));
+        localStorage.setItem(`meds_${activeUid}`, JSON.stringify(deduplicatedMeds));
 
-        // 2. Local storage update for Dose Logs & Calendar Data
+        // 2. Local storage update for Dose Logs & Calendar Data with Map deduplication
         if (Array.isArray(importedLogs) && importedLogs.length > 0) {
           const currentLocalLogs = JSON.parse(localStorage.getItem('dose_logs') || localStorage.getItem(`dose_logs_${activeUid}`) || '[]');
-          const mergedLogs = [...importedLogs, ...currentLocalLogs.filter(c => !importedLogs.some(i => i.id === c.id))];
-          localStorage.setItem('dose_logs', JSON.stringify(mergedLogs));
-          localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify(mergedLogs));
-          localStorage.setItem('calendar_events', JSON.stringify(mergedLogs));
+          const combinedLogs = [...importedLogs, ...currentLocalLogs];
+          const deduplicatedLogs = Array.from(
+            new Map(combinedLogs.map(log => [log.id || (log.medicationId + '_' + log.timestamp), log])).values()
+          );
+          localStorage.setItem('dose_logs', JSON.stringify(deduplicatedLogs));
+          localStorage.setItem(`dose_logs_${activeUid}`, JSON.stringify(deduplicatedLogs));
+          localStorage.setItem('calendar_events', JSON.stringify(deduplicatedLogs));
         }
 
         // 3. Batch sync to Firestore
