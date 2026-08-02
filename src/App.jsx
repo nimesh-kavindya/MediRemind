@@ -87,7 +87,46 @@ function App() {
     initCloudRestore();
   }, []);
 
-  // 2. Background Cloud Sync on State / LocalStorage Changes
+  // 2. Daily Morning Auto-Clean (Reset Today's Taken Checklist on New Day)
+  useEffect(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const lastActiveDate = localStorage.getItem('last_active_date');
+
+    if (lastActiveDate && lastActiveDate !== todayStr) {
+      setMedications(prevMeds => {
+        if (!Array.isArray(prevMeds) || prevMeds.length === 0) return prevMeds;
+        const resetMeds = prevMeds.map(m => ({
+          ...m,
+          taken: false,
+          status: 'PENDING'
+        }));
+        localStorage.setItem('medications', JSON.stringify(resetMeds));
+        localStorage.setItem('last_active_date', todayStr);
+
+        try {
+          if (realtimeDb) {
+            const logsRaw = localStorage.getItem('dose_logs');
+            const currentLogs = logsRaw ? JSON.parse(logsRaw) : logs;
+            set(ref(realtimeDb, 'user_app_data'), {
+              medications: resetMeds,
+              dose_logs: Array.isArray(currentLogs) ? currentLogs : [],
+              lastActiveDate: todayStr,
+              lastSynced: new Date().toISOString()
+            });
+          }
+        } catch (e) {
+          console.warn('Realtime DB morning reset sync warning:', e);
+        }
+
+        return resetMeds;
+      });
+      window.dispatchEvent(new Event('local_meds_updated'));
+    } else if (!lastActiveDate) {
+      localStorage.setItem('last_active_date', todayStr);
+    }
+  }, []);
+
+  // 3. Background Cloud Sync on State / LocalStorage Changes
   useEffect(() => {
     const syncToRealtimeDb = async () => {
       try {
@@ -105,6 +144,7 @@ function App() {
         await set(appDataRef, {
           medications: Array.isArray(currentMeds) ? currentMeds : [],
           dose_logs: Array.isArray(currentLogs) ? currentLogs : [],
+          lastActiveDate: new Date().toISOString().split('T')[0],
           lastSynced: new Date().toISOString()
         });
       } catch (err) {

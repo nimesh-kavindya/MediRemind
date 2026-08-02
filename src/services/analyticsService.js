@@ -1,14 +1,20 @@
 /**
  * Calculates real active streak and longest streak from actual user logs and current medication status.
  */
+function isTakenStatus(status) {
+  if (!status) return false;
+  const s = String(status).toLowerCase().trim();
+  return s === 'taken' || s === 'completed';
+}
+
 function computeStreaks(medications = [], logs = []) {
   const takenDateSet = new Set();
 
-  // 1. Collect dates from historical logs where status === 'taken'
+  // 1. Collect dates from historical logs where status is taken
   if (Array.isArray(logs)) {
     logs.forEach(log => {
-      if (log.status === 'taken') {
-        const dateStr = log.dateStr || (log.timestamp ? log.timestamp.split('T')[0] : null);
+      if (log && isTakenStatus(log.status)) {
+        const dateStr = log.dateStr || log.date || (log.timestamp ? log.timestamp.split('T')[0] : null);
         if (dateStr) {
           takenDateSet.add(dateStr);
         }
@@ -18,7 +24,7 @@ function computeStreaks(medications = [], logs = []) {
 
   // 2. Check if any current medication is marked taken today
   const todayStr = new Date().toISOString().split('T')[0];
-  const hasTakenToday = medications.some(m => m.taken);
+  const hasTakenToday = medications.some(m => m && (m.taken || isTakenStatus(m.status)));
   if (hasTakenToday) {
     takenDateSet.add(todayStr);
   }
@@ -98,9 +104,9 @@ function computeWeeklyData(medications = [], logs = [], currentAdherence = 0) {
     if (i === 0) {
       result.push({ day: dayName, adherence: currentAdherence });
     } else {
-      const dayLogs = (logs || []).filter(l => (l.dateStr === dateStr || (l.timestamp && l.timestamp.startsWith(dateStr))));
+      const dayLogs = (logs || []).filter(l => l && (l.dateStr === dateStr || l.date === dateStr || (l.timestamp && l.timestamp.startsWith(dateStr))));
       if (dayLogs.length > 0) {
-        const taken = dayLogs.filter(l => l.status === 'taken').length;
+        const taken = dayLogs.filter(l => isTakenStatus(l.status)).length;
         const adh = Math.round((taken / dayLogs.length) * 100);
         result.push({ day: dayName, adherence: adh });
       } else {
