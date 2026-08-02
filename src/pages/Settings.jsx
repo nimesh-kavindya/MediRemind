@@ -19,15 +19,12 @@ import { generateMedicationReportPDF } from '../services/pdfReportService';
 import Papa from 'papaparse';
 import toast from 'react-hot-toast';
 
-export default function Settings({ onClearAllData }) {
+export function Settings({ onClearAllData }) {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const { permission, soundEnabled, setSoundEnabled, enableBrowserNotifications, sendTestNotification } = useNotifications();
   const fileInputRef = useRef(null);
-
-  const [showClearModal, setShowClearModal] = useState(false);
-  const [isClearing, setIsClearing] = useState(false);
 
   const fetchUserMedications = async () => {
     try {
@@ -37,7 +34,7 @@ export default function Settings({ onClearAllData }) {
     } catch (e) {
       console.warn('Firestore fetch failed, reading local storage:', e);
     }
-    return JSON.parse(localStorage.getItem(`meds_${user.uid}`) || '[]');
+    return JSON.parse(localStorage.getItem(`meds_${user?.uid || 'demo_user'}`) || '[]');
   };
 
   const handleExportPDF = async (e) => {
@@ -207,6 +204,7 @@ export default function Settings({ onClearAllData }) {
         console.error('Import error:', err);
         toast.error('Failed to parse or import JSON backup file.');
       }
+    };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -467,3 +465,4 @@ export default function Settings({ onClearAllData }) {
   );
 }
 
+export default Settings;
