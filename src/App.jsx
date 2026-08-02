@@ -85,10 +85,13 @@ function App() {
     localStorage.removeItem('medications');
     localStorage.removeItem('dose_logs');
     localStorage.removeItem('medi_counts_backup');
+    localStorage.removeItem('calendar_events');
+    localStorage.removeItem('medication_calendar');
     setMedications([]);
     setLogs([]);
     window.dispatchEvent(new Event('local_meds_updated'));
     window.dispatchEvent(new Event('dose_logs_updated'));
+    window.dispatchEvent(new Event('calendar_updated'));
     window.location.reload();
   };
   return (

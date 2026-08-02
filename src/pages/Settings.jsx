@@ -367,8 +367,11 @@ export default function Settings({ onClearAllData }) {
                 localStorage.removeItem('medications');
                 localStorage.removeItem('dose_logs');
                 localStorage.removeItem('medi_counts_backup');
+                localStorage.removeItem('calendar_events');
+                localStorage.removeItem('medication_calendar');
                 window.dispatchEvent(new Event('local_meds_updated'));
                 window.dispatchEvent(new Event('dose_logs_updated'));
+                window.dispatchEvent(new Event('calendar_updated'));
                 toast.success("All app data cleared successfully");
                 setTimeout(() => {
                   window.location.reload();
