@@ -16,9 +16,8 @@ export default function Calendar() {
 
   const loadData = () => {
     try {
-      const activeUid = user?.uid || 'demo_user';
-      const medsRaw = localStorage.getItem('medications') || localStorage.getItem(`meds_${activeUid}`);
-      const logsRaw = localStorage.getItem('dose_logs') || localStorage.getItem(`dose_logs_${activeUid}`);
+      const medsRaw = localStorage.getItem('medications');
+      const logsRaw = localStorage.getItem('dose_logs');
 
       const meds = medsRaw ? JSON.parse(medsRaw) : [];
       const logs = logsRaw ? JSON.parse(logsRaw) : [];
