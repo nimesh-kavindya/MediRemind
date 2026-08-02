@@ -137,9 +137,9 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
         if (medDate !== todayStr) return med;
         if (!med.reminderTime) return med;
 
-        const times = Array.isArray(med.reminderTime) ? med.reminderTime : [med.reminderTime];
+        const times = Array.isArray(med?.reminderTime) ? med.reminderTime : [med?.reminderTime];
         const timeStr = times[0];
-        if (!timeStr) return med;
+        if (!timeStr || typeof timeStr !== 'string') return med;
 
         const [hr, min] = timeStr.split(':').map(Number);
         const schedTime = new Date();
@@ -362,26 +362,29 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     }
   };
 
-  const { totalMeds, takenMeds, pendingMeds, adherence, typeChartData, weeklyData, currentStreak, longestStreak } = calculateAdherenceStats(medications, doseLogs);
-  const nextReminder = calculateNextReminder(medications);
+  const { totalMeds, takenMeds, pendingMeds, adherence, typeChartData, weeklyData, currentStreak, longestStreak } = calculateAdherenceStats(medications || [], doseLogs || []);
+  const nextReminder = calculateNextReminder(medications || []);
 
-  const lowSupplyMeds = medications.filter(m => {
-    const total = parseInt(m.totalSupply, 10) || 30;
-    const remaining = m.remainingSupply !== undefined ? parseInt(m.remainingSupply, 10) : total;
-    const threshold = parseInt(m.lowSupplyThreshold, 10) || 5;
+  const safeMeds = Array.isArray(medications) ? medications : [];
+  const lowSupplyMeds = safeMeds.filter(m => {
+    if (!m) return false;
+    const total = parseInt(m?.totalSupply, 10) || 30;
+    const remaining = m?.remainingSupply !== undefined ? parseInt(m?.remainingSupply, 10) : total;
+    const threshold = parseInt(m?.lowSupplyThreshold, 10) || 5;
     return remaining <= threshold;
   });
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  const filteredMeds = medications.filter(m => {
-    const medDate = m.scheduledDate || m.startDate || (m.createdAt ? m.createdAt.split('T')[0] : '');
-    const isToday = medDate === todayStr || m.frequency === 'Daily' || !medDate;
+  const filteredMeds = safeMeds.filter(m => {
+    if (!m) return false;
+    const medDate = m?.scheduledDate || m?.startDate || (m?.createdAt ? String(m.createdAt).split('T')[0] : '');
+    const isToday = medDate === todayStr || m?.frequency === 'Daily' || !medDate;
     if (!isToday) return false;
 
-    const match = m.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    if (filterType === 'taken') return match && m.taken;
-    if (filterType === 'pending') return match && !m.taken;
+    const match = m?.name?.toLowerCase().includes((searchTerm || '').toLowerCase());
+    if (filterType === 'taken') return match && m?.taken;
+    if (filterType === 'pending') return match && !m?.taken;
     return match;
   });
 
@@ -439,7 +442,7 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
       )}
 
       {/* Next Reminder Highlight */}
-      {nextReminder && (
+      {nextReminder && nextReminder.medication && (
         <Card className={`relative overflow-hidden border ${nextReminder.isMissed ? 'border-red-500/50 bg-gradient-to-r from-red-500/10 via-red-500/5 to-transparent' : 'border-teal-500/50 bg-gradient-to-r from-teal-500/15 via-emerald-500/10 to-transparent'}`}>
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -569,11 +572,11 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
                       {med.taken ? <CheckCircle2 size={26} className="text-emerald-500 fill-emerald-500/20" /> : <Circle size={26} className={`${isMissed ? 'text-red-400' : 'text-slate-400 hover:text-teal-500'}`} />}
                     </button>
                     <div className="min-w-0 flex-1">
-                      <h4 className={`font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2 flex-wrap ${med.taken ? 'line-through text-slate-400 dark:text-slate-500' : ''}`}>
-                        <span>{med.name}</span>
-                        <span className="font-medium text-slate-500 dark:text-slate-400 text-xs sm:text-sm">({med.dosage})</span>
+                      <h4 className={`font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2 flex-wrap ${med?.taken ? 'line-through text-slate-400 dark:text-slate-500' : ''}`}>
+                        <span>{med?.name || 'Unnamed'}</span>
+                        <span className="font-medium text-slate-500 dark:text-slate-400 text-xs sm:text-sm">({med?.dosage || ''})</span>
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
-                          {med.category || 'Daily'}
+                          {med?.category || 'Daily'}
                         </span>
                       </h4>
                       <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -582,9 +585,9 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
                           <span className="font-medium">{med.scheduledDate || med.startDate || (med.createdAt ? med.createdAt.split('T')[0] : '')}</span>
                           <span className="mx-0.5">•</span>
                           <Clock size={12} className="shrink-0 ml-1" />
-                          <span>{Array.isArray(med.reminderTime) ? med.reminderTime.join(', ') : (med.reminderTime || 'Anytime')}</span>
-                          {med.mealTiming && med.mealTiming !== 'none' && (
-                            <span>• {med.mealTiming.replace('_', ' ')}</span>
+                          <span>{Array.isArray(med?.reminderTime) ? med.reminderTime.join(', ') : (med?.reminderTime || 'Anytime')}</span>
+                          {med?.mealTiming && med.mealTiming !== 'none' && (
+                            <span>• {String(med.mealTiming).replace('_', ' ')}</span>
                           )}
                         </span>
                       </div>

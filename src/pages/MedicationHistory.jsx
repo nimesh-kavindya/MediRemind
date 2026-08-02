@@ -103,20 +103,22 @@ export default function MedicationHistory({ logs = [], setLogs }) {
 
   // Filtered logs for the table/timeline list
   const filteredLogs = useMemo(() => {
-    return logs.filter(log => {
-      const logDateObj = log.dateStr ? new Date(log.dateStr) : new Date(log.timestamp || log.createdAt);
+    const safeLogs = Array.isArray(logs) ? logs : [];
+    return safeLogs.filter(log => {
+      if (!log) return false;
+      const logDateObj = log?.dateStr ? new Date(log.dateStr) : new Date(log?.timestamp || log?.createdAt || new Date());
       const logMonthYear = !isNaN(logDateObj.getTime()) ? logDateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
 
       const matchesMonth = selectedMonth === 'all' || logMonthYear === selectedMonth;
       const matchesSearch = 
-        log.medName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.notes?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.dosage?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.category?.toLowerCase().includes(searchTerm.toLowerCase());
+        log?.medName?.toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+        log?.notes?.toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+        log?.dosage?.toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+        log?.category?.toLowerCase().includes((searchTerm || '').toLowerCase());
 
-      const matchesMed = selectedMed === 'all' || log.medName === selectedMed;
-      const matchesCategory = selectedCategory === 'all' || (log.category || 'Daily') === selectedCategory;
-      const matchesStatus = selectedStatus === 'all' || log.status === selectedStatus;
+      const matchesMed = selectedMed === 'all' || log?.medName === selectedMed;
+      const matchesCategory = selectedCategory === 'all' || (log?.category || 'Daily') === selectedCategory;
+      const matchesStatus = selectedStatus === 'all' || log?.status === selectedStatus;
 
       return matchesMonth && matchesSearch && matchesMed && matchesCategory && matchesStatus;
     });
@@ -402,31 +404,31 @@ export default function MedicationHistory({ logs = [], setLogs }) {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-sm text-slate-900 dark:text-white">
-                          {log.medName}
+                          {log?.medName || 'Unnamed'}
                         </span>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                          {log.dosage}
+                          {log?.dosage || ''}
                         </span>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20">
-                          {log.category || 'Daily'}
+                          {log?.category || 'Daily'}
                         </span>
                         <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                           isTaken 
                             ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' 
                             : (isMissed ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400')
                         }`}>
-                          {log.status}
+                          {log?.status}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1 flex-wrap">
                         <span className="flex items-center gap-1">
                           <CalendarIcon size={13} className="text-teal-500" />
-                          {log.dateStr}
+                          {log?.dateStr}
                         </span>
                         <span className="flex items-center gap-1">
                           <Clock size={13} className="text-teal-500" />
-                          {log.scheduledTime}
+                          {log?.scheduledTime}
                         </span>
                         {log.notes && (
                           <span className="text-slate-600 dark:text-slate-300 italic">

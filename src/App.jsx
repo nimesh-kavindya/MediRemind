@@ -26,7 +26,8 @@ function App() {
   const [medications, setMedications] = useState(() => {
     try {
       const saved = localStorage.getItem('medications');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed.filter(m => m && typeof m === 'object' && m.id) : [];
     } catch (e) {
       return [];
     }
@@ -35,7 +36,8 @@ function App() {
   const [logs, setLogs] = useState(() => {
     try {
       const saved = localStorage.getItem('dose_logs');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed.filter(l => l && typeof l === 'object' && l.id) : [];
     } catch (e) {
       return [];
     }
