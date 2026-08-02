@@ -378,9 +378,10 @@ export default function MedicationHistory({ logs = [], setLogs }) {
         ) : (
           <div className="space-y-2.5">
             {(Array.isArray(filteredLogs) ? filteredLogs : []).slice(0, 50).map((log) => {
-              const isTaken = log?.status === 'taken' || log?.status === 'TAKEN';
-              const isMissed = log?.status === 'missed' || log?.status === 'MISSED';
+              const isTaken = log?.status === 'taken' || log?.status === 'TAKEN' || log?.status === 'completed' || log?.status === 'COMPLETED';
+              const isMissed = log?.status === 'missed' || log?.status === 'MISSED' || log?.status === 'overdue' || log?.status === 'OVERDUE';
               const isSkipped = log?.status === 'skipped' || log?.status === 'SKIPPED';
+              const isPending = !isTaken && !isMissed && !isSkipped;
 
               return (
                 <div 
@@ -394,11 +395,12 @@ export default function MedicationHistory({ logs = [], setLogs }) {
                         ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' 
                         : (isMissed 
                             ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30' 
-                            : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30')
+                            : (isSkipped ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30' : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'))
                     }`}>
                       {isTaken && <CheckCircle2 size={20} />}
                       {isMissed && <XCircle size={20} />}
                       {isSkipped && <AlertCircle size={20} />}
+                      {isPending && <Clock size={20} />}
                     </div>
 
                     <div>
@@ -415,9 +417,11 @@ export default function MedicationHistory({ logs = [], setLogs }) {
                         <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${
                           isTaken 
                             ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' 
-                            : (isMissed ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400')
+                            : (isMissed 
+                                ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' 
+                                : (isSkipped ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'))
                         }`}>
-                          {log?.status}
+                          {log?.status || 'PENDING'}
                         </span>
                       </div>
 
