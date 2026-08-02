@@ -3,12 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Calendar, Activity, Pill, AlertCircle, CheckCircle2, Circle, 
-  Search, BellRing, Trophy, Flame, Package, AlertTriangle, RefreshCw, Boxes, Bot, Sparkles, ArrowRight, MessageSquare
+  Search, BellRing, Trophy, Flame, Package, AlertTriangle, RefreshCw, Boxes, Bot, Sparkles, ArrowRight, MessageSquare, Trash2
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import { useAuth } from '../context/AuthContext';
 import { safeGetItem, safeSetItem } from '../utils';
+import { deleteMedication } from '../services/medicationService';
 import toast from 'react-hot-toast';
 
 import PageHeader from '../components/PageHeader';
@@ -66,7 +67,32 @@ export default function Dashboard() {
       } else {
         try {
           const saved = JSON.parse(savedRaw);
-          setMedications(Array.isArray(saved) ? saved : []);
+          let meds = Array.isArray(saved) ? saved : [];
+          
+          // Roll over daily medications to the current date and reset 'taken' status
+          const todayStr = new Date().toISOString().split('T')[0];
+          let updated = false;
+          meds = meds.map(m => {
+            const medDate = m.scheduledDate || m.startDate || (m.createdAt ? m.createdAt.split('T')[0] : '');
+            if (m.frequency === 'Daily' && medDate < todayStr) {
+              if (!m.endDate || todayStr <= m.endDate) {
+                updated = true;
+                return { ...m, scheduledDate: todayStr, taken: false };
+              }
+            }
+            if (!m.scheduledDate) {
+              updated = true;
+              return { ...m, scheduledDate: medDate };
+            }
+            return m;
+          });
+
+          if (updated) {
+            localStorage.setItem('medications', JSON.stringify(meds));
+            safeSetItem(`meds_${user.uid}`, JSON.stringify(meds));
+          }
+          
+          setMedications(meds);
         } catch (e) {
           console.error('Failed to parse meds from local storage', e);
           setMedications([]);
@@ -246,6 +272,30 @@ export default function Dashboard() {
     }
   };
 
+  const handleDelete = async (e, medId, medName) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (window.confirm(`Are you sure you want to delete ${medName}?`)) {
+      try {
+        const activeUid = user?.uid || 'demo_user';
+        const updatedMeds = medications.filter(m => m.id !== medId);
+        setMedications(updatedMeds);
+        localStorage.setItem('medications', JSON.stringify(updatedMeds));
+        safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
+        window.dispatchEvent(new Event('local_meds_updated'));
+        toast.success(`Deleted ${medName}`);
+
+        if (user?.uid) {
+          deleteMedication(user.uid, medId).catch(err => console.warn('Background delete failed', err));
+        }
+      } catch (err) {
+        toast.error('Failed to delete medication locally');
+      }
+    }
+  };
+
   const { totalMeds, takenMeds, pendingMeds, adherence, typeChartData, weeklyData, currentStreak, longestStreak } = calculateAdherenceStats(medications, doseLogs);
   const nextReminder = calculateNextReminder(medications);
 
@@ -256,7 +306,13 @@ export default function Dashboard() {
     return remaining <= threshold;
   });
 
+  const todayStr = new Date().toISOString().split('T')[0];
+
   const filteredMeds = medications.filter(m => {
+    const medDate = m.scheduledDate || m.startDate || (m.createdAt ? m.createdAt.split('T')[0] : '');
+    const isToday = medDate === todayStr;
+    if (!isToday) return false;
+
     const match = m.name?.toLowerCase().includes(searchTerm.toLowerCase());
     if (filterType === 'taken') return match && m.taken;
     if (filterType === 'pending') return match && !m.taken;
@@ -455,6 +511,9 @@ export default function Dashboard() {
                       <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         <span className="flex items-center gap-1">
                           <Calendar size={12} className="shrink-0" />
+                          <span className="font-medium">{med.scheduledDate || med.startDate || (med.createdAt ? med.createdAt.split('T')[0] : '')}</span>
+                          <span className="mx-0.5">•</span>
+                          <Clock size={12} className="shrink-0 ml-1" />
                           <span>{Array.isArray(med.reminderTime) ? med.reminderTime.join(', ') : (med.reminderTime || 'Anytime')}</span>
                           {med.mealTiming && med.mealTiming !== 'none' && (
                             <span>• {med.mealTiming.replace('_', ' ')}</span>
@@ -464,10 +523,17 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="shrink-0 ml-2">
+                  <div className="flex items-center gap-3 shrink-0 ml-2">
                     <span className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${med.taken ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'}`}>
                       {med.taken ? 'Done' : 'Pending'}
                     </span>
+                    <button
+                      onClick={(e) => handleDelete(e, med.id, med.name)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                      title="Delete Medication"
+                    >
+                      <Trash2 size={18} />
+                    </button>
                   </div>
                 </motion.div>
               ))}

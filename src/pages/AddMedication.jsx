@@ -219,6 +219,7 @@ export default function AddMedication() {
         newMedData = {
           id: `local_${Date.now()}`,
           ...data,
+          scheduledDate: data.startDate,
           totalSupply: supplyVal,
           remainingSupply: supplyVal,
           dosesLeft: supplyVal,
