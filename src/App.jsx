@@ -51,13 +51,32 @@ function App() {
 
   // Centralized Master Deletion Handler
   const handleDeleteMedication = (id) => {
+    const targetMed = medications.find(m => m.id === id);
+    const targetName = targetMed?.name?.trim().toLowerCase();
+
     setMedications(prevMeds => {
       const updated = prevMeds.filter(m => m.id !== id);
       localStorage.setItem('medications', JSON.stringify(updated));
       return updated;
     });
+
+    setLogs(prevLogs => {
+      const updatedLogs = prevLogs.filter(l => {
+        if (!l) return false;
+        const matchesId = l.medicationId === id || l.medId === id;
+        const matchesName = targetName && (
+          l.medicationName?.trim().toLowerCase() === targetName || 
+          l.medName?.trim().toLowerCase() === targetName
+        );
+        return !matchesId && !matchesName;
+      });
+      localStorage.setItem('dose_logs', JSON.stringify(updatedLogs));
+      return updatedLogs;
+    });
+
     localStorage.removeItem('medi_counts_backup');
     window.dispatchEvent(new Event('local_meds_updated'));
+    window.dispatchEvent(new Event('dose_logs_updated'));
   };
 
   // Centralized Hard Reset / Clear All Data

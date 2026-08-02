@@ -74,7 +74,7 @@ export default function MedicationHistory({ logs = [], setLogs }) {
   // Unique list of medications for filter dropdown
   const medicationOptions = useMemo(() => {
     const safeLogs = Array.isArray(logs) ? logs : [];
-    const names = new Set(safeLogs.map(l => l && l.medName).filter(Boolean));
+    const names = new Set(safeLogs.map(l => l && (l.medicationName || l.medName)).filter(Boolean));
     return Array.from(names);
   }, [logs]);
 
@@ -108,17 +108,18 @@ export default function MedicationHistory({ logs = [], setLogs }) {
     const safeLogs = Array.isArray(logs) ? logs : [];
     return safeLogs.filter(log => {
       if (!log) return false;
-      const logDateObj = log?.dateStr ? new Date(log.dateStr) : new Date(log?.timestamp || log?.createdAt || new Date());
+      const logDateObj = log?.dateStr || log?.date ? new Date(log.dateStr || log.date) : new Date(log?.timestamp || log?.createdAt || new Date());
       const logMonthYear = !isNaN(logDateObj.getTime()) ? logDateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
 
       const matchesMonth = selectedMonth === 'all' || logMonthYear === selectedMonth;
+      const displayName = log?.medicationName || log?.medName || '';
       const matchesSearch = 
-        log?.medName?.toLowerCase().includes((searchTerm || '').toLowerCase()) ||
+        displayName.toLowerCase().includes((searchTerm || '').toLowerCase()) ||
         log?.notes?.toLowerCase().includes((searchTerm || '').toLowerCase()) ||
         log?.dosage?.toLowerCase().includes((searchTerm || '').toLowerCase()) ||
         log?.category?.toLowerCase().includes((searchTerm || '').toLowerCase());
 
-      const matchesMed = selectedMed === 'all' || log?.medName === selectedMed;
+      const matchesMed = selectedMed === 'all' || displayName === selectedMed || log?.medicationId === selectedMed || log?.medId === selectedMed;
       const matchesCategory = selectedCategory === 'all' || (log?.category || 'Daily') === selectedCategory;
       const matchesStatus = selectedStatus === 'all' || log?.status === selectedStatus;
 
