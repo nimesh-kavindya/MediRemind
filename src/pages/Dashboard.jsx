@@ -375,26 +375,12 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     return match;
   });
 
-  const displayScheduleCards = safeMeds.length === 0 ? [] : filteredMeds.flatMap(med => {
-    const times = Array.isArray(med.reminderTime) 
-      ? med.reminderTime 
-      : (med.reminderTime ? [med.reminderTime] : ['08:00']);
-    
-    if (times.length > 1) {
-      return times.map((t, idx) => ({
-        ...med,
-        instanceId: `${med.id}_time_${idx}_${t}`,
-        time: t,
-        displayTime: t
-      }));
-    }
-    return [{
-      ...med,
-      instanceId: med.id,
-      time: times[0] || '08:00',
-      displayTime: times[0] || '08:00'
-    }];
-  });
+  const displayScheduleCards = safeMeds.length === 0 ? [] : filteredMeds.map((med, index) => ({
+    ...med,
+    instanceId: med.id || `med_idx_${index}`,
+    time: Array.isArray(med.reminderTime) ? med.reminderTime.join(', ') : (med.reminderTime || '08:00'),
+    displayTime: Array.isArray(med.reminderTime) ? med.reminderTime.join(', ') : (med.reminderTime || '08:00')
+  }));
 
   const COLORS = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
@@ -563,12 +549,12 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
         ) : (
           <div className="space-y-3">
             <AnimatePresence mode="popLayout">
-              {displayScheduleCards.map((med) => {
+              {displayScheduleCards.map((med, index) => {
                 const isMissed = med.isMissedMarked && !isInstanceTaken(med);
                 const isTaken = isInstanceTaken(med);
                 return (
                 <motion.div 
-                  key={med.instanceId || med.id}
+                  key={med.id || med.instanceId || index}
                   layout
                   initial={{ opacity: 0, y: 15, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}

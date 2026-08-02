@@ -53,73 +53,7 @@ export default function AddMedication({ medications, setMedications, setLogs, on
 
   const dedupMedicationsList = (medsList) => {
     if (!Array.isArray(medsList)) return { merged: [], modified: false };
-    const merged = [];
-    const nameMap = {};
-    let modified = false;
-
-    for (const med of medsList) {
-      if (!med || !med.name) continue;
-      const nameKey = med.name.trim().toLowerCase();
-      const existingIndex = nameMap[nameKey];
-
-      if (existingIndex !== undefined) {
-        const existing = merged[existingIndex];
-        
-        // Merge scheduled times
-        const times1 = Array.isArray(existing.reminderTime) ? existing.reminderTime : [existing.reminderTime].filter(Boolean);
-        const times2 = Array.isArray(med.reminderTime) ? med.reminderTime : [med.reminderTime].filter(Boolean);
-        const combinedTimes = Array.from(new Set([...times1, ...times2])).sort();
-        const newReminderTime = combinedTimes.length > 1 ? combinedTimes : (combinedTimes[0] || '');
-
-        if (JSON.stringify(existing.reminderTime) !== JSON.stringify(newReminderTime)) {
-          existing.reminderTime = newReminderTime;
-          modified = true;
-        }
-
-        const getSupply = (m) => {
-          if (m.remainingSupply !== undefined) return parseInt(m.remainingSupply, 10);
-          if (m.dosesLeft !== undefined) return parseInt(m.dosesLeft, 10);
-          if (m.remainingDoses !== undefined) return parseInt(m.remainingDoses, 10);
-          return parseInt(m.totalSupply, 10) || 30;
-        };
-
-        const existingRemaining = getSupply(existing);
-        const medRemaining = getSupply(med);
-
-        // If existing is out of stock (<= 0) but the duplicate has stock, we can restore it.
-        if (existingRemaining <= 0 && medRemaining > 0) {
-          existing.totalSupply = parseInt(med.totalSupply, 10) || 30;
-          existing.remainingSupply = medRemaining;
-          existing.dosesLeft = medRemaining;
-          existing.remainingDoses = medRemaining;
-          modified = true;
-        } else {
-          // Keep current pill count as-is, but synchronize properties
-          existing.dosesLeft = existingRemaining;
-          existing.remainingSupply = existingRemaining;
-          existing.remainingDoses = existingRemaining;
-        }
-        
-        modified = true;
-      } else {
-        const copy = { ...med };
-        const getSupply = (m) => {
-          if (m.remainingSupply !== undefined) return parseInt(m.remainingSupply, 10);
-          if (m.dosesLeft !== undefined) return parseInt(m.dosesLeft, 10);
-          if (m.remainingDoses !== undefined) return parseInt(m.remainingDoses, 10);
-          return parseInt(m.totalSupply, 10) || 30;
-        };
-        const supply = getSupply(copy);
-        copy.remainingSupply = supply;
-        copy.dosesLeft = supply;
-        copy.remainingDoses = supply;
-
-        merged.push(copy);
-        nameMap[nameKey] = merged.length - 1;
-      }
-    }
-
-    return { merged, modified };
+    return { merged: medsList.filter(Boolean), modified: false };
   };
 
   const loadMedications = () => {
@@ -167,73 +101,20 @@ export default function AddMedication({ medications, setMedications, setLogs, on
     try {
       const supplyVal = parseInt(data.totalSupply, 10) || 30;
       const thresholdVal = parseInt(data.lowSupplyThreshold, 10) || 5;
-      const nameKey = data.name.trim().toLowerCase();
-      const activeUid = user?.uid || 'demo_user';
-
-      const existingIndex = medications.findIndex(m => m.name && m.name.trim().toLowerCase() === nameKey);
-      const existing = existingIndex >= 0 ? medications[existingIndex] : null;
-
-      let newMedData = null;
-      let isRefill = false;
-      const updatedMeds = [...medications];
-
-      if (existing) {
-        const getSupply = (m) => {
-          if (m.remainingSupply !== undefined) return parseInt(m.remainingSupply, 10);
-          if (m.dosesLeft !== undefined) return parseInt(m.dosesLeft, 10);
-          if (m.remainingDoses !== undefined) return parseInt(m.remainingDoses, 10);
-          return parseInt(m.totalSupply, 10) || 30;
-        };
-
-        const currentTotal = parseInt(existing.totalSupply, 10) || 30;
-        const currentRemaining = getSupply(existing);
-
-        let newTotal = currentTotal;
-        let newRemaining = currentRemaining;
-
-        if (currentRemaining <= 0) {
-          newTotal = supplyVal;
-          newRemaining = supplyVal;
-          isRefill = true;
-        }
-
-        const times1 = Array.isArray(existing.reminderTime) ? existing.reminderTime : [existing.reminderTime].filter(Boolean);
-        const times2 = [data.reminderTime].filter(Boolean);
-        const combinedTimes = Array.from(new Set([...times1, ...times2])).sort();
-        const newReminderTime = combinedTimes.length > 1 ? combinedTimes : (combinedTimes[0] || '08:00');
-
-        newMedData = {
-          ...existing,
-          reminderTime: newReminderTime,
-          totalSupply: newTotal,
-          remainingSupply: newRemaining,
-          dosesLeft: newRemaining,
-          remainingDoses: newRemaining,
-          lowSupplyThreshold: Math.max(parseInt(existing.lowSupplyThreshold, 10) || 5, thresholdVal)
-        };
-        
-        updatedMeds[existingIndex] = newMedData;
-        if (isRefill) {
-          toast.success(`Refilled ${existing.name}! Stock reset to ${supplyVal} doses.`, { icon: '📦' });
-        } else {
-          toast.success(`Added scheduled time ${data.reminderTime} for ${existing.name}.`, { icon: '📅' });
-        }
-      } else {
-        newMedData = {
-          id: `local_${Date.now()}`,
-          ...data,
-          scheduledDate: data.startDate,
-          totalSupply: supplyVal,
-          remainingSupply: supplyVal,
-          dosesLeft: supplyVal,
-          remainingDoses: supplyVal,
-          lowSupplyThreshold: thresholdVal,
-          taken: false,
-          createdAt: new Date().toISOString()
-        };
-        updatedMeds.push(newMedData);
-        toast.success(`Added ${data.name} with ${supplyVal} doses total supply!`);
-        
+      const newMedData = {
+        id: `local_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        ...data,
+        scheduledDate: data.startDate,
+        totalSupply: supplyVal,
+        remainingSupply: supplyVal,
+        dosesLeft: supplyVal,
+        remainingDoses: supplyVal,
+        lowSupplyThreshold: thresholdVal,
+        taken: false,
+        createdAt: new Date().toISOString()
+      };
+      const updatedMeds = [...medications, newMedData];
+      toast.success(`Added ${data.name} with ${supplyVal} doses total supply!`);        
         // Auto-create initial log for new med if it starts today
         const todayStr = new Date().toISOString().split('T')[0];
         if (data.startDate === todayStr) {
