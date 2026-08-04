@@ -30,9 +30,7 @@ export default function AddMedication({ medications: propMeds, setMedications: p
       type: 'pill',
       category: 'Daily',
       mealTiming: 'after_meal',
-      frequency: 'Daily',
-      totalSupply: 30,
-      lowSupplyThreshold: 5
+      frequency: 'Daily'
     }
   });
 
@@ -47,10 +45,7 @@ export default function AddMedication({ medications: propMeds, setMedications: p
     reminderTime: '08:00',
     startDate: '',
     endDate: '',
-    notes: '',
-    totalSupply: 30,
-    remainingSupply: 30,
-    lowSupplyThreshold: 5
+    notes: ''
   });
 
   const dedupMedicationsList = (medsList) => {
@@ -103,8 +98,6 @@ export default function AddMedication({ medications: propMeds, setMedications: p
     setIsSubmitting(true);
     setIsLoading(true);
     try {
-      const supplyVal = parseInt(data.totalSupply, 10) || 30;
-      const thresholdVal = parseInt(data.lowSupplyThreshold, 10) || 5;
       const activeUid = user?.uid || 'demo_user';
       const uniqueId = `local_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
@@ -112,11 +105,6 @@ export default function AddMedication({ medications: propMeds, setMedications: p
         id: uniqueId,
         ...data,
         scheduledDate: data.startDate,
-        totalSupply: supplyVal,
-        remainingSupply: supplyVal,
-        dosesLeft: supplyVal,
-        remainingDoses: supplyVal,
-        lowSupplyThreshold: thresholdVal,
         taken: false,
         createdAt: new Date().toISOString()
       };
@@ -146,9 +134,7 @@ export default function AddMedication({ medications: propMeds, setMedications: p
         type: 'pill',
         category: 'Daily',
         mealTiming: 'after_meal',
-        frequency: 'Daily',
-        totalSupply: 30,
-        lowSupplyThreshold: 5
+        frequency: 'Daily'
       });
 
       if (user?.uid) {
@@ -163,22 +149,7 @@ export default function AddMedication({ medications: propMeds, setMedications: p
     }
   };
 
-  const handleQuickRefill = async (e, med) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    const total = parseInt(med.totalSupply, 10) || 30;
-    try {
-      await updateMedication(user?.uid, med.id, {
-        remainingSupply: total
-      });
-      toast.success(`Refilled ${med.name}! Remaining supply reset to ${total} doses.`, { icon: '📦' });
-      loadMedications();
-    } catch (err) {
-      toast.error('Failed to refill medication');
-    }
-  };
+
 
   const handleDelete = async (e, medId, medName) => {
     if (e) {
@@ -213,10 +184,6 @@ export default function AddMedication({ medications: propMeds, setMedications: p
       e.stopPropagation();
     }
     setEditingMed(med);
-    const total = parseInt(med.totalSupply, 10) || 30;
-    const remaining = med.remainingSupply !== undefined ? parseInt(med.remainingSupply, 10) : total;
-    const threshold = parseInt(med.lowSupplyThreshold, 10) || 5;
-
     setEditForm({
       name: med.name || '',
       dosage: med.dosage || '',
@@ -224,13 +191,10 @@ export default function AddMedication({ medications: propMeds, setMedications: p
       category: med.category || 'Daily',
       frequency: med.frequency || 'Daily',
       mealTiming: med.mealTiming || 'after_meal',
-      reminderTime: Array.isArray(med.reminderTime) ? med.reminderTime[0] || '08:00' : (med.reminderTime || '08:00'),
-      startDate: med.startDate || '',
+      reminderTime: Array.isArray(med.reminderTime) ? med.reminderTime[0] : (med.reminderTime || '08:00'),
+      startDate: med.startDate || med.scheduledDate || '',
       endDate: med.endDate || '',
-      notes: med.notes || '',
-      totalSupply: total,
-      remainingSupply: remaining,
-      lowSupplyThreshold: threshold
+      notes: med.notes || ''
     });
   };
 
@@ -247,20 +211,26 @@ export default function AddMedication({ medications: propMeds, setMedications: p
     setIsUpdating(true);
     try {
       const activeUid = user?.uid || 'demo_user';
-      const totalNum = parseInt(editForm.totalSupply, 10) || 30;
-      const remNum = parseInt(editForm.remainingSupply, 10) ?? totalNum;
-      const threshNum = parseInt(editForm.lowSupplyThreshold, 10) || 5;
+      const updatedMeds = medications.map(m => {
+        if (m.id === editingMed.id) {
+          return {
+            ...m,
+            name: editForm.name,
+            dosage: editForm.dosage,
+            type: editForm.type,
+            category: editForm.category,
+            frequency: editForm.frequency,
+            mealTiming: editForm.mealTiming,
+            reminderTime: editForm.reminderTime,
+            startDate: editForm.startDate,
+            scheduledDate: editForm.startDate,
+            endDate: editForm.endDate,
+            notes: editForm.notes
+          };
+        }
+        return m;
+      });
 
-      const updatedPayload = {
-        ...editForm,
-        totalSupply: totalNum,
-        remainingSupply: remNum,
-        dosesLeft: remNum,
-        remainingDoses: remNum,
-        lowSupplyThreshold: threshNum
-      };
-
-      const updatedMeds = medications.map(m => m.id === editingMed.id ? { ...m, ...updatedPayload } : m);
       setMedications(updatedMeds);
       localStorage.setItem('medications', JSON.stringify(updatedMeds));
       localStorage.setItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
@@ -403,34 +373,7 @@ export default function AddMedication({ medications: propMeds, setMedications: p
               />
             </div>
 
-            {/* Inventory & Low Supply Alert Settings */}
-            <div className="bg-teal-500/5 dark:bg-slate-800/60 p-4 rounded-2xl border border-teal-500/20 space-y-3">
-              <div className="flex items-center gap-2">
-                <Package size={18} className="text-teal-600 dark:text-teal-400" />
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white">Inventory & Low Supply Alert</h4>
-              </div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <Input
-                  label="Total Supply Count (Pills/Doses) *"
-                  type="number"
-                  min="1"
-                  placeholder="e.g. 30"
-                  icon={Boxes}
-                  {...register('totalSupply')}
-                />
-                <Input
-                  label="Low Supply Warning Threshold *"
-                  type="number"
-                  min="1"
-                  placeholder="e.g. 5"
-                  icon={AlertTriangle}
-                  {...register('lowSupplyThreshold')}
-                />
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                The app automatically decrements your remaining supply when you take doses on your Dashboard and triggers browser notifications when supply is low.
-              </p>
-            </div>
+
 
             <div className="w-full">
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Notes / Instructions</label>
@@ -556,37 +499,7 @@ export default function AddMedication({ medications: propMeds, setMedications: p
                         )}
                       </div>
 
-                      {/* Supply & Low Stock Indicator */}
-                      {(() => {
-                        const total = parseInt(med.totalSupply, 10) || 30;
-                        const remaining = med.remainingSupply !== undefined ? parseInt(med.remainingSupply, 10) : total;
-                        const threshold = parseInt(med.lowSupplyThreshold, 10) || 5;
-                        const isLow = remaining <= threshold;
 
-                        return (
-                          <div className={`mt-3 p-2.5 rounded-xl border flex items-center justify-between gap-2 text-xs transition-all ${
-                            isLow 
-                              ? 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-300' 
-                              : 'bg-slate-50 dark:bg-slate-800/80 border-slate-200/80 dark:border-slate-700/80 text-slate-700 dark:text-slate-300'
-                          }`}>
-                            <div className="flex items-center gap-2 font-medium">
-                              {isLow ? <AlertTriangle size={15} className="text-amber-500 shrink-0 animate-bounce" /> : <Package size={15} className="text-teal-500 shrink-0" />}
-                              <div>
-                                <span className="font-bold text-sm">{remaining}</span> / {total} doses left
-                                {isLow && <span className="ml-1.5 text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">Low Stock</span>}
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={(e) => handleQuickRefill(e, med)}
-                              className="px-2.5 py-1 rounded-lg bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-400 text-white dark:text-slate-950 font-bold text-[11px] flex items-center gap-1 shrink-0 transition-all active:scale-95 shadow-sm"
-                              title={`Reset remaining doses to ${total}`}
-                            >
-                              <RefreshCw size={12} /> Refill
-                            </button>
-                          </div>
-                        );
-                      })()}
 
                       {med.notes && (
                         <p className="text-xs italic text-slate-500 dark:text-slate-400 mt-2 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
@@ -750,43 +663,7 @@ export default function AddMedication({ medications: propMeds, setMedications: p
                   </div>
                 </div>
 
-                <div className="bg-teal-500/5 dark:bg-slate-800/80 p-3.5 rounded-xl border border-teal-500/20 space-y-2">
-                  <span className="block text-xs font-bold text-teal-700 dark:text-teal-400 flex items-center gap-1.5">
-                    <Package size={14} /> Inventory & Low Supply Threshold
-                  </span>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Total Supply</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={editForm.totalSupply}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, totalSupply: e.target.value }))}
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500/20"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Remaining</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editForm.remainingSupply}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, remainingSupply: e.target.value }))}
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500/20 font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">Alert Below</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={editForm.lowSupplyThreshold}
-                        onChange={(e) => setEditForm(prev => ({ ...prev, lowSupplyThreshold: e.target.value }))}
-                        className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-teal-500/20"
-                      />
-                    </div>
-                  </div>
-                </div>
+
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Instructions / Notes</label>

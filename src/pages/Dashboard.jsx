@@ -233,45 +233,7 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     };
   }, [user, setMedications]);
 
-  const handleRefill = async (e, med) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    const total = parseInt(med.totalSupply, 10) || 30;
-    
-    // Exact, synchronous update of state and localStorage first (optimistic)
-    const updatedMeds = medications.map(m => {
-      if (m.id === med.id) {
-        return {
-          ...m,
-          remainingSupply: total,
-          dosesLeft: total,
-          remainingDoses: total
-        };
-      }
-      return m;
-    });
 
-    setMedications(updatedMeds);
-    const activeUid = user?.uid || 'demo_user';
-    safeSetItem(`meds_${activeUid}`, JSON.stringify(updatedMeds));
-    window.dispatchEvent(new Event('local_meds_updated'));
-    toast.success(`Refilled ${med.name}! Supply reset to ${total} doses.`, { icon: '📦' });
-
-    if (user?.uid) {
-      try {
-        const medRef = doc(db, `users/${user.uid}/medications`, med.id);
-        await updateDoc(medRef, { 
-          remainingSupply: total,
-          dosesLeft: total,
-          remainingDoses: total
-        });
-      } catch (error) {
-        console.warn('Firestore refill background failed:', error);
-      }
-    }
-  };
 
   const isInstanceTaken = (med) => {
     if (med.taken || med.status === 'TAKEN') return true;
@@ -296,19 +258,12 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
     const currentlyTaken = isInstanceTaken(med);
     const updatedTaken = !currentlyTaken;
 
-    const total = parseInt(med.totalSupply, 10) || 30;
-    const currentSupply = med.remainingSupply !== undefined ? parseInt(med.remainingSupply, 10) : total;
-    const newSupply = updatedTaken ? Math.max(0, currentSupply - 1) : currentSupply + 1;
-
     const updatedMeds = medications.map(m => {
       if (m.id === med.id) {
         return {
           ...m,
           taken: updatedTaken,
-          status: updatedTaken ? 'TAKEN' : 'PENDING',
-          remainingSupply: newSupply,
-          dosesLeft: newSupply,
-          remainingDoses: newSupply
+          status: updatedTaken ? 'TAKEN' : 'PENDING'
         };
       }
       return m;
@@ -405,51 +360,6 @@ export default function Dashboard({ medications, setMedications, doseLogs, setDo
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-36">
       <PageHeader title={`Welcome back, ${user?.name} 👋`} description="Here is your health overview." />
-
-      {/* Low Supply Alert Banner */}
-      {lowSupplyMeds.length > 0 && (
-        <Card className="border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-transparent p-5 shadow-sm">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-500 dark:text-amber-400 shrink-0">
-                <AlertTriangle size={24} className="animate-bounce" />
-              </div>
-              <div>
-                <h4 className="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
-                  <span>Low Supply Alert</span>
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-300 font-extrabold border border-amber-500/30">
-                    {lowSupplyMeds.length} Medication{lowSupplyMeds.length > 1 ? 's' : ''} Need Refill
-                  </span>
-                </h4>
-                <div className="flex flex-wrap gap-2 mt-1.5">
-                  {(Array.isArray(lowSupplyMeds) ? lowSupplyMeds : []).map(m => {
-                    const rem = m.remainingSupply !== undefined ? parseInt(m.remainingSupply, 10) : (parseInt(m.totalSupply, 10) || 30);
-                    return (
-                      <span key={m.id} className="text-xs font-medium text-amber-900 dark:text-amber-200 bg-amber-500/15 px-2.5 py-1 rounded-lg border border-amber-500/20 flex items-center gap-1.5">
-                        <span>{m.name}:</span>
-                        <strong className="text-amber-700 dark:text-amber-300 font-bold">{rem} dose{rem === 1 ? '' : 's'} remaining</strong>
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto flex-wrap">
-              {(Array.isArray(lowSupplyMeds) ? lowSupplyMeds : []).map(m => (
-                <Button
-                  key={m.id}
-                  onClick={(e) => handleRefill(e, m)}
-                  size="sm"
-                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-sm flex items-center gap-1"
-                >
-                  <RefreshCw size={12} /> Refill {m.name}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </Card>
-      )}
 
       {/* Next Reminder Highlight */}
       {nextReminder && nextReminder.medication && (

@@ -92,7 +92,6 @@ export function Settings({ onClearAllData }) {
           email: user?.email || 'Unknown', 
           photoURL: user?.photoURL || '' 
         },
-        medications: meds,
         dose_logs: logs,
         doseLogs: logs,
         calendar_data: logs.length > 0 ? logs : calendarEvents

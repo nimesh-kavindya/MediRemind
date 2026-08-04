@@ -51,79 +51,73 @@ function App() {
     }
   });
 
-  // 1. Initial Cloud Auto-Restore (if localStorage is empty)
+  // 1. Boot & Midnight Reset & Cloud Restore Handler
   useEffect(() => {
-    const initCloudRestore = async () => {
-      try {
-        const localMeds = localStorage.getItem('medications');
-        const localLogs = localStorage.getItem('dose_logs');
-        
-        const isMedsEmpty = !localMeds || JSON.parse(localMeds).length === 0;
-        const isLogsEmpty = !localLogs || JSON.parse(localLogs).length === 0;
+    const handleBootAndReset = async () => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const lastActiveDate = localStorage.getItem('last_active_date');
 
-        if (isMedsEmpty && isLogsEmpty && realtimeDb) {
-          const appDataRef = ref(realtimeDb, 'user_app_data');
-          const snapshot = await get(appDataRef);
-          if (snapshot.exists()) {
-            const data = snapshot.val();
-            if (data?.medications && Array.isArray(data.medications) && data.medications.length > 0) {
-              localStorage.setItem('medications', JSON.stringify(data.medications));
-              setMedications(data.medications);
-            }
-            if (data?.dose_logs && Array.isArray(data.dose_logs) && data.dose_logs.length > 0) {
-              localStorage.setItem('dose_logs', JSON.stringify(data.dose_logs));
-              setLogs(data.dose_logs);
-            }
-            window.dispatchEvent(new Event('local_meds_updated'));
-            window.dispatchEvent(new Event('dose_logs_updated'));
-            window.dispatchEvent(new Event('calendar_updated'));
-          }
-        }
-      } catch (err) {
-        console.warn('Realtime Database restore failed:', err);
-      }
-    };
-
-    initCloudRestore();
-  }, []);
-
-  // 2. Daily Morning Auto-Clean (Reset Today's Taken Checklist on New Day)
-  useEffect(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const lastActiveDate = localStorage.getItem('last_active_date');
-
-    if (lastActiveDate && lastActiveDate !== todayStr) {
-      setMedications(prevMeds => {
-        if (!Array.isArray(prevMeds) || prevMeds.length === 0) return prevMeds;
-        const resetMeds = prevMeds.map(m => ({
-          ...m,
-          taken: false,
-          status: 'PENDING'
-        }));
-        localStorage.setItem('medications', JSON.stringify(resetMeds));
+      if (lastActiveDate && lastActiveDate !== todayStr) {
+        // STEP A: Clear local medications array and today's schedule on midnight reset
+        setMedications([]);
+        localStorage.setItem('medications', JSON.stringify([]));
         localStorage.setItem('last_active_date', todayStr);
 
+        // STEP B & C: Explicitly wipe active medications path in Firebase RTDB while preserving dose_logs
         try {
           if (realtimeDb) {
             const logsRaw = localStorage.getItem('dose_logs');
-            const currentLogs = logsRaw ? JSON.parse(logsRaw) : logs;
-            set(ref(realtimeDb, 'user_app_data'), {
-              medications: resetMeds,
+            const currentLogs = logsRaw ? JSON.parse(logsRaw) : [];
+            await set(ref(realtimeDb, 'user_app_data'), {
+              medications: [],
               dose_logs: Array.isArray(currentLogs) ? currentLogs : [],
               lastActiveDate: todayStr,
               lastSynced: new Date().toISOString()
             });
           }
         } catch (e) {
-          console.warn('Realtime DB morning reset sync warning:', e);
+          console.warn('Realtime DB midnight reset purge warning:', e);
         }
 
-        return resetMeds;
-      });
-      window.dispatchEvent(new Event('local_meds_updated'));
-    } else if (!lastActiveDate) {
-      localStorage.setItem('last_active_date', todayStr);
-    }
+        window.dispatchEvent(new Event('local_meds_updated'));
+      } else {
+        if (!lastActiveDate) {
+          localStorage.setItem('last_active_date', todayStr);
+        }
+
+        // STEP D: Prevent resurrection - restore from cloud ONLY if local is empty and cloud is on todayStr
+        try {
+          const localMeds = localStorage.getItem('medications');
+          const localLogs = localStorage.getItem('dose_logs');
+          
+          const isMedsEmpty = !localMeds || JSON.parse(localMeds).length === 0;
+          const isLogsEmpty = !localLogs || JSON.parse(localLogs).length === 0;
+
+          if ((isMedsEmpty || isLogsEmpty) && realtimeDb) {
+            const appDataRef = ref(realtimeDb, 'user_app_data');
+            const snapshot = await get(appDataRef);
+            if (snapshot.exists()) {
+              const data = snapshot.val();
+              if (isMedsEmpty && data?.lastActiveDate === todayStr && data?.medications && Array.isArray(data.medications)) {
+                localStorage.setItem('medications', JSON.stringify(data.medications));
+                setMedications(data.medications);
+              }
+              if (isLogsEmpty && data?.dose_logs && Array.isArray(data.dose_logs) && data.dose_logs.length > 0) {
+                localStorage.setItem('dose_logs', JSON.stringify(data.dose_logs));
+                setLogs(data.dose_logs);
+              }
+              window.dispatchEvent(new Event('local_meds_updated'));
+              window.dispatchEvent(new Event('dose_logs_updated'));
+              window.dispatchEvent(new Event('calendar_updated'));
+            }
+          }
+        } catch (err) {
+          console.warn('Realtime Database restore failed:', err);
+        }
+      }
+    };
+
+    handleBootAndReset();
   }, []);
 
   // 3. Background Cloud Sync on State / LocalStorage Changes
